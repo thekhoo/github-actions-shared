@@ -1,0 +1,24 @@
+name: 'Python Quality Check'
+description: 'Run Python linting or testing with uv and caching'
+
+inputs:
+  python-version:
+    description: Python version to use (e.g., 3.13, 3.14)
+    required: true
+
+  test-directories:
+    description: Space separated list of directories to run pytest on
+    required: false
+    default: 'tests/'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup UV environment
+      uses: thekhoo/github-actions-shared/.github/actions/python-setup-uv@main
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Run pytest
+      shell: bash
+      run: uv run pytest ${{ inputs.test-directories }}

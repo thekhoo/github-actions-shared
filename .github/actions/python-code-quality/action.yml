@@ -1,0 +1,47 @@
+name: 'Python Quality Check'
+description: 'Run Python linting or testing with uv and caching'
+
+inputs:
+  python-version:
+    description: Python version to use (e.g., 3.13, 3.14)
+    required: true
+
+  directories:
+    description: Space separated list of directories to check
+    required: true
+
+  use-ruff:
+    description: 'Whether to use ruff for linting'
+    type: boolean
+    required: false
+    default: false
+
+  use-pyrefly:
+    description: 'Whether to use pyrefly for type checking'
+    type: boolean
+    required: false
+    default: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup UV environment
+      uses: thekhoo/github-actions-shared/.github/actions/python-setup-uv@main
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # lint checks
+    - name: Run ruff check
+      if: inputs.use-ruff == 'true'
+      shell: bash
+      run: uv run ruff check ${{ inputs.directories }}
+
+    - name: Run ruff format check
+      if: inputs.use-ruff == 'true'
+      shell: bash
+      run: uv run ruff format --check ${{ inputs.directories }}
+
+    - name: Run pyrefly typechecking
+      if: inputs.use-pyrefly == 'true'
+      shell: bash
+      run: uv run pyrefly check ${{ inputs.directories }}
