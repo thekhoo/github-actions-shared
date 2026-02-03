@@ -28,4 +28,4 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: uv --frozen sync --dev
+      run: uv sync --frozen --dev
