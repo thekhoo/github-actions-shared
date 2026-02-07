@@ -1,0 +1,57 @@
+name: Docker Retag
+description: Retag an existing Docker image with new tags without rebuilding
+
+inputs:
+  registry:
+    description: 'Docker registry (e.g., docker.io, ghcr.io)'
+    required: true
+
+  username:
+    description: 'Username for the Docker registry (pass via secrets)'
+    required: true
+
+  password:
+    description: 'Password or token for the Docker registry (pass via secrets)'
+    required: true
+
+  source-image:
+    description: 'Full source image tag to pull (e.g., docker.io/user/app:sha-abc123)'
+    required: true
+
+  target-tags:
+    description: 'Space-separated list of new tags to apply (e.g., "latest v1.2.3 production")'
+    required: true
+
+  image-name:
+    description: 'Image name without registry (e.g., myuser/myapp)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+
+    - name: Create new tags at registry level
+      shell: bash
+      run: |
+        SOURCE="${{ inputs.source-image }}"
+
+        # Build list of new tags
+        NEW_TAGS=""
+        for tag in ${{ inputs.target-tags }}; do
+          TARGET="${{ inputs.registry }}/${{ inputs.image-name }}:${tag}"
+          NEW_TAGS="${NEW_TAGS} --tag ${TARGET}"
+          echo "Will tag as: ${TARGET}"
+        done
+
+        # Create all tags in one command (no pull needed!)
+        docker buildx imagetools create ${SOURCE} ${NEW_TAGS}
+        echo "✅ Successfully tagged image with new tags"
