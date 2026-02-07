@@ -131,8 +131,9 @@ Build and push a Docker image tagged with commit SHA. This action builds once an
 | `image-name` | Image name without registry or tags (e.g., myuser/myapp) | Yes | - |
 | `commit-sha` | Git commit SHA to use as image tag | Yes | - |
 | `dockerfile-path` | Path to the Dockerfile | No | `./Dockerfile` |
-| `build-context` | Build context directory | No | `.` |
 | `platforms` | Comma-separated list of platforms | No | `linux/amd64` |
+
+**Note**: Build context is always `.` (repository root). Use `.dockerignore` to exclude files from the build context.
 
 ### Outputs
 

@@ -10,6 +10,7 @@ This repository contains reusable GitHub Actions for Python projects, Docker dep
 
 - always use hyphens for action inputs (i.e. input-repository)
 - prompt user with questions if requirements are ambiguous
+- use short and accurate commit messages
 
 ## Architecture
 
