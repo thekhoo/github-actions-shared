@@ -14,8 +14,8 @@ inputs:
     description: 'Password or token for the Docker registry (pass via secrets)'
     required: true
 
-  source-image:
-    description: 'Full source image tag to pull (e.g., docker.io/user/app:sha-abc123)'
+  source-commit-sha:
+    description: 'Source commit SHA to retag from (e.g., abc123)'
     required: true
 
   target-tags:
@@ -42,7 +42,7 @@ runs:
     - name: Create new tags at registry level
       shell: bash
       run: |
-        SOURCE="${{ inputs.source-image }}"
+        SOURCE="${{ inputs.registry }}/${{ inputs.image-name }}:sha-${{ inputs.source-commit-sha }}"
 
         echo "Source image: ${SOURCE}"
 
