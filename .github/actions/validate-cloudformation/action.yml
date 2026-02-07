@@ -5,15 +5,15 @@ inputs:
   template-paths:
     description: 'Space-separated list of CloudFormation template paths to validate'
     required: true
+  
+  validation-role-arn:
+    description: 'ARN of the deployment role to assume for CloudFormation operations. If not provided, defaults to github-actions-{owner}-{repo} or uses DEPLOYMENT_ROLE_NAME input.'
+    required: true
 
   python-version:
     description: 'Python version to use (e.g., 3.13, 3.14)'
     required: false
     default: '3.13'
-
-  validation-role-arn:
-    description: 'ARN of the deployment role to assume for CloudFormation operations. If not provided, defaults to github-actions-{owner}-{repo} or uses DEPLOYMENT_ROLE_NAME input.'
-    required: true
 
   aws-region:
     description: 'AWS region for validation'
@@ -30,7 +30,7 @@ runs:
   steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Install uv
       uses: astral-sh/setup-uv@v5
       with:
