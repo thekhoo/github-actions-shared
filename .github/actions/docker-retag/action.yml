@@ -44,6 +44,8 @@ runs:
       run: |
         SOURCE="${{ inputs.source-image }}"
 
+        echo "Source image: ${SOURCE}"
+
         # Build list of new tags
         NEW_TAGS=""
         for tag in ${{ inputs.target-tags }}; do
@@ -53,5 +55,6 @@ runs:
         done
 
         # Create all tags in one command (no pull needed!)
-        docker buildx imagetools create ${SOURCE} ${NEW_TAGS}
+        echo "Running: docker buildx imagetools create \"${SOURCE}\" ${NEW_TAGS}"
+        docker buildx imagetools create "${SOURCE}" ${NEW_TAGS}
         echo "✅ Successfully tagged image with new tags"
