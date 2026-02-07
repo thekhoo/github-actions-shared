@@ -87,7 +87,7 @@ runs:
 
     - name: Deploy deployment role CloudFormation stack
       if: inputs.run-deploy-deployment-role == 'true'
-      uses: ./.github/actions/deploy-cloudformation
+      uses: thekhoo/github-actions-shared/.github/actions/aws-cloudformation-deploy@main
       with:
         deployment-role-arn: ${{ inputs.create-deployment-role-arn }}
         stack-name: ${{ inputs.universe }}-${{ inputs.deployment-role-stack-name }}
@@ -104,7 +104,7 @@ runs:
 
     - name: Deploy infrastructure CloudFormation stack
       if: inputs.run-deploy-infrastructure == 'true'
-      uses: ./.github/actions/deploy-cloudformation
+      uses: thekhoo/github-actions-shared/.github/actions/aws-cloudformation-deploy@main
       with:
         deployment-role-arn: ${{ inputs.infrastructure-deployment-role-arn }}
         stack-name: ${{ inputs.universe }}-${{ inputs.infrastructure-stack-name }}
