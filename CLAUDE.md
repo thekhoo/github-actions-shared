@@ -21,6 +21,8 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 - **python-setup-uv**: Base action that sets up Python with `uv` package manager. Includes dependency caching and installs dependencies from `uv.lock`.
 - **python-linting**: Composite action that uses `python-setup-uv`, then runs optional linting tools (ruff check/format, pyrefly typechecking).
 - **python-pytest**: Composite action that uses `python-setup-uv`, then runs pytest on specified directories.
+- **python-semantic-release**: Analyses conventional commits, bumps version in pyproject.toml, and creates a git tag. Does not publish GitHub Releases (use `github-publish-release` for that).
+- **github-publish-release**: Creates a GitHub Release with build artifacts for a given tag. Designed to run after `python-semantic-release` and a successful PyPI publish.
 - **validate-cloudformation**: Performs two-stage validation: cfn-lint for static validation, then AWS CloudFormation validate-template API. Uses OIDC role chaining (entry role → deployment role).
 - **docker-build-and-publish**: (Work in progress, currently empty)
 
@@ -32,6 +34,8 @@ python-linting ──┐
 python-pytest ───┘
 
 validate-cloudformation (standalone, includes own setup)
+
+python-semantic-release → github-publish-release (separate step, after PyPI publish)
 ```
 
 ## Key Patterns

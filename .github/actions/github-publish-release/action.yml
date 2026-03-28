@@ -1,0 +1,46 @@
+# ============================================================================
+# Composite action — GitHub Publish Release
+#
+# Creates a GitHub Release with build artifacts for a given tag.
+# Designed to be used after python-semantic-release and a successful
+# PyPI publish, so the release is only created when deployment succeeds.
+#
+# Usage:
+#
+#   - uses: thekhoo/github-actions-shared/.github/actions/python-semantic-release@main
+#     id: release
+#     with:
+#       github-token: ${{ secrets.GITHUB_TOKEN }}
+#
+#   # publish to PyPI here ...
+#
+#   - uses: thekhoo/github-actions-shared/.github/actions/github-publish-release@main
+#     if: steps.release.outputs.released == 'true'
+#     with:
+#       github-token: ${{ secrets.GITHUB_TOKEN }}
+#       tag: ${{ steps.release.outputs.tag }}
+# ============================================================================
+name: "GitHub Publish Release"
+description: >
+  Create a GitHub Release with build artifacts for a given tag.
+
+branding:
+  icon: "tag"
+  color: "blue"
+
+inputs:
+  github-token:
+    description: "GitHub token with contents: write permission"
+    required: true
+  tag:
+    description: "The git tag to publish (e.g. v1.3.0)"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Publish to GitHub Release
+      uses: python-semantic-release/publish-action@v10.5.3
+      with:
+        github_token: ${{ inputs.github-token }}
+        tag: ${{ inputs.tag }}

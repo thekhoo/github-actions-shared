@@ -1,0 +1,85 @@
+# ============================================================================
+# Composite action — Python Semantic Release
+#
+# Handles: version bump, commit, tag.
+# Does NOT handle PyPI publishing or GitHub Release creation — those
+# must stay in the caller's workflow. Use the companion action
+# github-publish-release to create the GitHub Release after PyPI succeeds.
+#
+# Usage:
+#
+#   - uses: thekhoo/github-actions-shared/.github/actions/python-semantic-release@main
+#     id: release
+#     with:
+#       github-token: ${{ secrets.GITHUB_TOKEN }}
+#
+#   # publish to PyPI here ...
+#
+#   - uses: thekhoo/github-actions-shared/.github/actions/github-publish-release@main
+#     if: steps.release.outputs.released == 'true'
+#     with:
+#       github-token: ${{ secrets.GITHUB_TOKEN }}
+#       tag: ${{ steps.release.outputs.tag }}
+# ============================================================================
+name: "Python Semantic Release"
+description: >
+  Analyse conventional commits, bump version in pyproject.toml,
+  and create a git tag.
+ 
+branding:
+  icon: "package"
+  color: "green"
+ 
+inputs:
+  github-token:
+    description: "GitHub token with contents: write permission"
+    required: true
+  python-version:
+    description: "Python version for building"
+    required: false
+    default: "3.12"
+  git-committer-name:
+    description: "Name for the version bump commit"
+    required: false
+    default: "github-actions[bot]"
+  git-committer-email:
+    description: "Email for the version bump commit"
+    required: false
+    default: "github-actions[bot]@users.noreply.github.com"
+ 
+outputs:
+  released:
+    description: "'true' if a new version was released"
+    value: ${{ steps.semrel.outputs.released }}
+  version:
+    description: "The released version string (e.g. 1.3.0)"
+    value: ${{ steps.semrel.outputs.version }}
+  tag:
+    description: "The git tag created (e.g. v1.3.0)"
+    value: ${{ steps.semrel.outputs.tag }}
+ 
+runs:
+  using: "composite"
+  steps:
+    - name: Ensure full git history
+      shell: bash
+      run: |
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          echo "Unshallowing repository..."
+          git fetch --unshallow --tags
+        else
+          git fetch --tags
+        fi
+ 
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+ 
+    - name: Semantic Release
+      id: semrel
+      uses: python-semantic-release/python-semantic-release@v10.5.3
+      with:
+        github_token: ${{ inputs.github-token }}
+        git_committer_name: ${{ inputs.git-committer-name }}
+        git_committer_email: ${{ inputs.git-committer-email }}
+ 
