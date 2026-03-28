@@ -14,17 +14,29 @@ This repository contains reusable GitHub Actions for Python projects, Docker dep
 
 ## Architecture
 
-### Action Structure
+Each action lives in `.github/actions/<action-name>/action.yml` and follows a composite action pattern. Full documentation for each action is in `docs/<action-name>.md` — read the relevant doc when modifying an action.
 
-Each action lives in `.github/actions/<action-name>/action.yml` and follows a composite action pattern. Actions are designed to be composable:
+### Actions Index
 
-- **python-setup-uv**: Base action that sets up Python with `uv` package manager. Includes dependency caching and installs dependencies from `uv.lock`.
-- **python-linting**: Composite action that uses `python-setup-uv`, then runs optional linting tools (ruff check/format, pyrefly typechecking).
-- **python-pytest**: Composite action that uses `python-setup-uv`, then runs pytest on specified directories.
-- **python-semantic-release**: Analyses conventional commits, bumps version in pyproject.toml, and creates a git tag. Does not publish GitHub Releases (use `github-publish-release` for that).
-- **github-publish-release**: Creates a GitHub Release with build artifacts for a given tag. Designed to run after `python-semantic-release` and a successful PyPI publish.
-- **validate-cloudformation**: Performs two-stage validation: cfn-lint for static validation, then AWS CloudFormation validate-template API. Uses OIDC role chaining (entry role → deployment role).
-- **docker-build-and-publish**: (Work in progress, currently empty)
+**Python CI:**
+- `python-setup-uv` — base Python + uv setup (used by linting and pytest)
+- `python-linting` — ruff and pyrefly (uses python-setup-uv)
+- `python-pytest` — pytest runner (uses python-setup-uv)
+
+**Release:**
+- `python-semantic-release` — version bump, commit, tag (no GitHub Release)
+- `github-publish-release` — creates GitHub Release for a tag (run after PyPI publish)
+
+**AWS CloudFormation:**
+- `aws-cloudformation-validate` — cfn-lint + AWS API validation with OIDC role chaining
+- `aws-cloudformation-deploy` — validates then deploys a stack (uses aws-cloudformation-validate)
+
+**Docker:**
+- `docker-build-and-publish` — build and push image with buildx caching
+- `docker-retag` — retag image at registry level without rebuild
+
+**Orchestration:**
+- `deploy-infrastructure-and-docker` — orchestrates deployment role, infrastructure, and docker retag (uses aws-cloudformation-deploy + docker-retag)
 
 ### Dependency Chain
 
@@ -33,31 +45,16 @@ python-linting ──┐
                  ├─→ python-setup-uv
 python-pytest ───┘
 
-validate-cloudformation (standalone, includes own setup)
+python-semantic-release → (PyPI publish) → github-publish-release
 
-python-semantic-release → github-publish-release (separate step, after PyPI publish)
+aws-cloudformation-deploy → aws-cloudformation-validate
+
+deploy-infrastructure-and-docker → aws-cloudformation-deploy
+                                 → docker-retag
 ```
 
 ## Key Patterns
 
-### UV Package Manager
-
-All Python actions use `uv` instead of pip/poetry. Commands:
-- `uv sync --frozen --dev`: Install dependencies from lockfile
-- `uv run <command>`: Run commands in uv-managed environment
-- `uv run --with <package> <command>`: Install and run tool transiently
-
-### AWS Role Chaining
-
-The CloudFormation validation action uses a two-step OIDC authentication:
-1. Assume entry role: `github-actions-oidc-entry-role` (hardcoded in account 020844256789)
-2. Chain to deployment role: Specified via `validation-role-arn` input
-
-### Action References
-
-When updating actions, remember that external repositories reference them via:
-- `@main` for latest (typical usage)
-- `@<commit-sha>` for pinned versions
-- `@<tag>` for released versions
-
-Changes to action.yml files are immediately live for `@main` references.
+- **uv package manager**: `uv sync --frozen --dev` to install, `uv run <cmd>` to execute, `uv run --with <pkg> <cmd>` for transient tools
+- **AWS OIDC role chaining**: entry role (`github-actions-oidc-entry-role` in account 020844256789) → deployment role
+- **Action references**: `@main` (latest), `@<commit-sha>` (pinned), `@<tag>` (released). Changes to action.yml are immediately live for `@main`.
