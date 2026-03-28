@@ -1,0 +1,63 @@
+name: Python CI
+
+on:
+  workflow_call:
+    inputs:
+      linting-python-version:
+        description: Python version for linting (e.g., 3.13, 3.14)
+        type: string
+        required: true
+
+      pytest-python-versions:
+        description: JSON array of Python versions for pytest matrix (e.g., '["3.13", "3.14"]')
+        type: string
+        required: true
+
+      lint-directories:
+        description: Space separated list of directories to lint
+        type: string
+        required: true
+
+      use-ruff:
+        description: Whether to use ruff for linting
+        type: boolean
+        required: false
+        default: false
+
+      use-pyrefly:
+        description: Whether to use pyrefly for type checking
+        type: boolean
+        required: false
+        default: false
+
+      test-directories:
+        description: Space separated list of directories to run pytest on
+        type: string
+        required: false
+        default: 'tests/'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run linting
+        uses: thekhoo/github-actions-shared/.github/actions/python-linting@main
+        with:
+          python-version: ${{ inputs.linting-python-version }}
+          directories: ${{ inputs.lint-directories }}
+          use-ruff: ${{ inputs.use-ruff }}
+          use-pyrefly: ${{ inputs.use-pyrefly }}
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ${{ fromJson(inputs.pytest-python-versions) }}
+    steps:
+      - name: Run pytest
+        uses: thekhoo/github-actions-shared/.github/actions/python-pytest@main
+        with:
+          python-version: ${{ matrix.python-version }}
+          test-directories: ${{ inputs.test-directories }}
