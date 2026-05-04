@@ -11,6 +11,7 @@ This repository contains reusable GitHub Actions for Python projects, Docker dep
 - always use hyphens for action inputs (i.e. input-repository)
 - prompt user with questions if requirements are ambiguous
 - use short and accurate commit messages
+- update documentation in docs/ after creating/modifying/deleting an action
 
 ## Architecture
 
@@ -31,6 +32,10 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 - `aws-cloudformation-validate` — cfn-lint + AWS API validation with OIDC role chaining
 - `aws-cloudformation-deploy` — validates then deploys a stack (uses aws-cloudformation-validate)
 
+**AWS SAM:**
+- `sam-build-and-package` — builds and packages a SAM app, uploads artifacts to S3 under `/${environment}/sam/${sha}/`
+- `sam-deploy` — deploys a packaged SAM template to CloudFormation (uses output from sam-build-and-package)
+
 **Docker:**
 - `docker-build-and-publish` — build and push image with buildx caching
 - `docker-retag` — retag image at registry level without rebuild
@@ -48,6 +53,8 @@ python-pytest ───┘
 python-semantic-release → (PyPI publish) → github-publish-release
 
 aws-cloudformation-deploy → aws-cloudformation-validate
+
+sam-deploy → sam-build-and-package (via packaged-template-uri output)
 
 deploy-infrastructure-and-docker → aws-cloudformation-deploy
                                  → docker-retag
