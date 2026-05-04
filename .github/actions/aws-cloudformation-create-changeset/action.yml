@@ -1,0 +1,226 @@
+name: 'Create CloudFormation Change Set'
+description: 'Validates a CloudFormation template, uploads it to S3, and creates a change set'
+
+inputs:
+  # required parameters
+  environment:
+    description: 'Deployment environment (development, staging, production)'
+    required: true
+
+  deployment-role-arn:
+    description: 'ARN of the deployment role to assume for CloudFormation operations'
+    required: true
+
+  # template source — provide exactly one of template-file or packaged-template-uri
+  template-file:
+    description: 'Path to a local CloudFormation template file. Use this for templates with no local artifact references.'
+    required: false
+    default: ''
+
+  packaged-template-uri:
+    description: 'S3 URI of a pre-packaged template (output from aws-cloudformation-package). Use this when local artifacts have already been uploaded.'
+    required: false
+    default: ''
+
+  # parameters with defaults
+  stack-name:
+    description: 'CloudFormation stack name'
+    required: false
+    default: ''
+
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'eu-west-2'
+
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role)'
+    required: false
+    default: arn:aws:iam::020844256789:role/github-actions-oidc-entry-role
+
+  parameters:
+    description: 'CloudFormation parameters (space-separated KEY=VALUE pairs)'
+    required: false
+    default: ''
+
+  capabilities:
+    description: 'CloudFormation capabilities'
+    required: false
+    default: 'CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND'
+
+  # Descriptive Optional Parameters
+  summary-title:
+    description: 'Title for the change set summary'
+    required: false
+    default: 'CloudFormation Change Set Summary'
+
+  summary-icon:
+    description: 'Icon emoji for the change set summary'
+    required: false
+    default: ':memo:'
+
+outputs:
+  changeset-arn:
+    description: 'ARN of the created change set'
+    value: ${{ steps.create.outputs.changeset-arn }}
+  stack-name:
+    description: 'Resolved CloudFormation stack name'
+    value: ${{ steps.resolve.outputs.stack-name }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        TEMPLATE_FILE="${{ inputs.template-file }}"
+        PACKAGED_URI="${{ inputs.packaged-template-uri }}"
+
+        if [ -z "${TEMPLATE_FILE}" ] && [ -z "${PACKAGED_URI}" ]; then
+          echo "Error: provide either template-file or packaged-template-uri"
+          exit 1
+        fi
+
+        if [ -n "${TEMPLATE_FILE}" ] && [ -n "${PACKAGED_URI}" ]; then
+          echo "Error: provide either template-file or packaged-template-uri, not both"
+          exit 1
+        fi
+
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (Deployment Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-deploy
+        role-chaining: true
+
+    - name: Download packaged template for validation
+      if: inputs.packaged-template-uri != ''
+      shell: bash
+      run: |
+        echo "Downloading packaged template from ${{ inputs.packaged-template-uri }}..."
+        aws s3 cp ${{ inputs.packaged-template-uri }} packaged-template.yaml
+
+    - name: Validate template
+      uses: thekhoo/github-actions-shared/.github/actions/aws-cloudformation-validate@main
+      with:
+        template-paths: ${{ inputs.packaged-template-uri != '' && 'packaged-template.yaml' || inputs.template-file }}
+        validation-role-arn: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        oidc-entry-role-arn: ${{ inputs.oidc-entry-role-arn }}
+
+    - name: Resolve stack name
+      id: resolve
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.stack-name }}" ]; then
+          STACK_NAME="${{ inputs.stack-name }}"
+        else
+          STACK_NAME="${{ github.event.repository.name }}-${{ inputs.environment }}"
+        fi
+        echo "stack-name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Prepare template URL
+      id: template
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.packaged-template-uri }}" ]; then
+          # Convert s3://bucket/key to HTTPS URL
+          S3_URI="${{ inputs.packaged-template-uri }}"
+          BUCKET=$(echo "${S3_URI}" | sed 's|s3://||' | cut -d'/' -f1)
+          KEY=$(echo "${S3_URI}" | sed "s|s3://${BUCKET}/||")
+          TEMPLATE_URL="https://${BUCKET}.s3.${{ inputs.aws-region }}.amazonaws.com/${KEY}"
+        else
+          # Upload local template to S3
+          S3_KEY="${{ inputs.environment }}/cloudformation/${{ github.sha }}/template.yaml"
+          aws s3 cp ${{ inputs.template-file }} "s3://aws-management-codepipeline/${S3_KEY}"
+          TEMPLATE_URL="https://aws-management-codepipeline.s3.${{ inputs.aws-region }}.amazonaws.com/${S3_KEY}"
+        fi
+        echo "template-url=${TEMPLATE_URL}" >> $GITHUB_OUTPUT
+
+    - name: Create change set
+      id: create
+      shell: bash
+      run: |
+        STACK_NAME="${{ steps.resolve.outputs.stack-name }}"
+        CHANGESET_NAME="${{ github.event.repository.name }}-${{ github.run_id }}-${{ github.run_attempt }}"
+
+        # Detect whether this is a CREATE or UPDATE change set
+        STACK_STATUS=$(aws cloudformation describe-stacks \
+          --stack-name "${STACK_NAME}" \
+          --query 'Stacks[0].StackStatus' \
+          --output text 2>/dev/null || echo "STACK_NOT_FOUND")
+
+        if [ "${STACK_STATUS}" = "STACK_NOT_FOUND" ] || [ "${STACK_STATUS}" = "REVIEW_IN_PROGRESS" ]; then
+          CHANGE_SET_TYPE="CREATE"
+        else
+          CHANGE_SET_TYPE="UPDATE"
+        fi
+
+        echo "Stack status: ${STACK_STATUS} — creating ${CHANGE_SET_TYPE} change set: ${CHANGESET_NAME}"
+
+        PARAM_ARGS=""
+        if [ -n "${{ inputs.parameters }}" ]; then
+          PARAM_ARGS="--parameter-overrides ${{ inputs.parameters }}"
+        fi
+
+        CHANGESET_ARN=$(aws cloudformation create-change-set \
+          --stack-name "${STACK_NAME}" \
+          --change-set-name "${CHANGESET_NAME}" \
+          --template-url "${{ steps.template.outputs.template-url }}" \
+          --change-set-type "${CHANGE_SET_TYPE}" \
+          --capabilities ${{ inputs.capabilities }} \
+          --tags \
+            Key=Project,Value=${{ github.repository_owner }}-${{ github.event.repository.name }} \
+            Key=ManagedBy,Value=GitHubActions \
+            Key=GitCommit,Value=${{ github.sha }} \
+            Key=Environment,Value=${{ inputs.environment }} \
+          $PARAM_ARGS \
+          --query 'Id' \
+          --output text)
+
+        echo "changeset-arn=${CHANGESET_ARN}" >> $GITHUB_OUTPUT
+        echo "changeset-name=${CHANGESET_NAME}" >> $GITHUB_OUTPUT
+        echo "change-set-type=${CHANGE_SET_TYPE}" >> $GITHUB_OUTPUT
+
+        echo "Waiting for change set to be ready..."
+        aws cloudformation wait change-set-create-complete \
+          --stack-name "${STACK_NAME}" \
+          --change-set-name "${CHANGESET_NAME}"
+
+    - name: Display change set summary
+      shell: bash
+      run: |
+        STACK_NAME="${{ steps.resolve.outputs.stack-name }}"
+        CHANGESET_ARN="${{ steps.create.outputs.changeset-arn }}"
+
+        echo "### ${{ inputs.summary-title }} ${{ inputs.summary-icon }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Stack Name:** ${STACK_NAME}" >> $GITHUB_STEP_SUMMARY
+        echo "**Change Set Type:** ${{ steps.create.outputs.change-set-type }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ inputs.aws-region }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Change Set ARN:** ${CHANGESET_ARN}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        CHANGES=$(aws cloudformation describe-change-set \
+          --change-set-name "${CHANGESET_ARN}" \
+          --query 'Changes' \
+          --output json)
+
+        CHANGE_COUNT=$(echo "${CHANGES}" | jq 'length')
+        echo "#### Proposed Changes (${CHANGE_COUNT})" >> $GITHUB_STEP_SUMMARY
+
+        if [ "${CHANGE_COUNT}" -gt 0 ]; then
+          echo "${CHANGES}" | jq -r '.[] | "- **\(.ResourceChange.Action)** \(.ResourceChange.ResourceType) `\(.ResourceChange.LogicalResourceId)`"' >> $GITHUB_STEP_SUMMARY
+        else
+          echo "_No changes_" >> $GITHUB_STEP_SUMMARY
+        fi

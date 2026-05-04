@@ -1,0 +1,148 @@
+name: 'Execute CloudFormation Change Set'
+description: 'Executes a CloudFormation change set and waits for stack completion'
+
+inputs:
+  # required parameters
+  environment:
+    description: 'Deployment environment (development, staging, production)'
+    required: true
+
+  changeset-arn:
+    description: 'ARN of the change set to execute (output from aws-cloudformation-create-changeset)'
+    required: true
+
+  deployment-role-arn:
+    description: 'ARN of the deployment role to assume for CloudFormation operations'
+    required: true
+
+  # parameters with defaults
+  stack-name:
+    description: 'CloudFormation stack name'
+    required: false
+    default: ''
+
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'eu-west-2'
+
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role)'
+    required: false
+    default: arn:aws:iam::020844256789:role/github-actions-oidc-entry-role
+
+  # Descriptive Optional Parameters
+  summary-title:
+    description: 'Title for the deployment summary'
+    required: false
+    default: 'CloudFormation Execute Change Set Summary'
+
+  summary-icon:
+    description: 'Icon emoji for the deployment summary'
+    required: false
+    default: ':rocket:'
+
+outputs:
+  stack-outputs:
+    description: 'JSON string of stack outputs'
+    value: ${{ steps.get-outputs.outputs.stack-outputs }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (Deployment Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-deploy
+        role-chaining: true
+
+    - name: Resolve stack name
+      id: resolve
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.stack-name }}" ]; then
+          STACK_NAME="${{ inputs.stack-name }}"
+        else
+          STACK_NAME="${{ github.event.repository.name }}-${{ inputs.environment }}"
+        fi
+        echo "stack-name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Execute change set
+      id: execute
+      shell: bash
+      run: |
+        STACK_NAME="${{ steps.resolve.outputs.stack-name }}"
+
+        # Check stack status before executing to select the right waiter
+        STACK_STATUS=$(aws cloudformation describe-stacks \
+          --stack-name "${STACK_NAME}" \
+          --query 'Stacks[0].StackStatus' \
+          --output text 2>/dev/null || echo "STACK_NOT_FOUND")
+
+        if [ "${STACK_STATUS}" = "REVIEW_IN_PROGRESS" ] || [ "${STACK_STATUS}" = "STACK_NOT_FOUND" ]; then
+          echo "waiter=stack-create-complete" >> $GITHUB_OUTPUT
+        else
+          echo "waiter=stack-update-complete" >> $GITHUB_OUTPUT
+        fi
+
+        echo "Executing change set ${{ inputs.changeset-arn }}..."
+        aws cloudformation execute-change-set \
+          --change-set-name "${{ inputs.changeset-arn }}"
+
+        echo "Waiting for stack ${STACK_NAME} to reach a complete state..."
+
+    - name: Wait for stack completion
+      shell: bash
+      run: |
+        aws cloudformation wait ${{ steps.execute.outputs.waiter }} \
+          --stack-name "${{ steps.resolve.outputs.stack-name }}" \
+          --region ${{ inputs.aws-region }}
+
+    - name: Get stack outputs
+      id: get-outputs
+      shell: bash
+      run: |
+        OUTPUTS=$(aws cloudformation describe-stacks \
+          --stack-name "${{ steps.resolve.outputs.stack-name }}" \
+          --query 'Stacks[0].Outputs' \
+          --output json)
+
+        echo "Stack outputs:"
+        echo "$OUTPUTS" | jq -r '.[] | "\(.OutputKey): \(.OutputValue)"'
+
+        echo "stack-outputs<<EOF" >> $GITHUB_OUTPUT
+        echo "$OUTPUTS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Display deployment summary
+      shell: bash
+      run: |
+        STACK_NAME="${{ steps.resolve.outputs.stack-name }}"
+
+        echo "### ${{ inputs.summary-title }} ${{ inputs.summary-icon }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Stack Name:** ${STACK_NAME}" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Change Set ARN:** ${{ inputs.changeset-arn }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ inputs.aws-region }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        OUTPUTS=$(aws cloudformation describe-stacks \
+          --stack-name "${STACK_NAME}" \
+          --query 'Stacks[0].Outputs' \
+          --output json 2>/dev/null || echo "[]")
+
+        if [ "$(echo "$OUTPUTS" | jq 'length')" -gt 0 ]; then
+          echo "#### Stack Outputs" >> $GITHUB_STEP_SUMMARY
+          echo "$OUTPUTS" | jq -r '.[] | "- **\(.OutputKey):** \(.OutputValue)"' >> $GITHUB_STEP_SUMMARY
+        fi

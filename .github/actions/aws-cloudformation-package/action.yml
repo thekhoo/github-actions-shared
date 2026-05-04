@@ -1,0 +1,93 @@
+name: 'Package CloudFormation Template'
+description: 'Packages a CloudFormation template, uploading local artifacts to S3'
+
+inputs:
+  # required parameters
+  environment:
+    description: 'Deployment environment (development, staging, production)'
+    required: true
+
+  deployment-role-arn:
+    description: 'ARN of the deployment role to assume for S3 upload'
+    required: true
+
+  # parameters with defaults
+  template-file:
+    description: 'Path to the CloudFormation template file'
+    required: false
+    default: 'template.yaml'
+
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'eu-west-2'
+
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role)'
+    required: false
+    default: arn:aws:iam::020844256789:role/github-actions-oidc-entry-role
+
+  # Descriptive Optional Parameters
+  summary-title:
+    description: 'Title for the package summary'
+    required: false
+    default: 'CloudFormation Package Summary'
+
+  summary-icon:
+    description: 'Icon emoji for the package summary'
+    required: false
+    default: ':package:'
+
+outputs:
+  packaged-template-uri:
+    description: 'S3 URI of the packaged CloudFormation template'
+    value: ${{ steps.package.outputs.packaged-template-uri }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (Deployment Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-package
+        role-chaining: true
+
+    - name: Package template
+      id: package
+      shell: bash
+      run: |
+        S3_PREFIX="${{ inputs.environment }}/cloudformation/${{ github.sha }}"
+        PACKAGED_TEMPLATE_S3_URI="s3://aws-management-codepipeline/${S3_PREFIX}/packaged-template.yaml"
+
+        echo "Packaging template ${{ inputs.template-file }} to s3://aws-management-codepipeline/${S3_PREFIX}/..."
+        aws cloudformation package \
+          --template-file ${{ inputs.template-file }} \
+          --s3-bucket aws-management-codepipeline \
+          --s3-prefix "${S3_PREFIX}" \
+          --output-template-file packaged-template.yaml \
+          --region ${{ inputs.aws-region }}
+
+        echo "Uploading packaged template to ${PACKAGED_TEMPLATE_S3_URI}..."
+        aws s3 cp packaged-template.yaml "${PACKAGED_TEMPLATE_S3_URI}"
+
+        echo "packaged-template-uri=${PACKAGED_TEMPLATE_S3_URI}" >> $GITHUB_OUTPUT
+
+    - name: Display package summary
+      shell: bash
+      run: |
+        echo "### ${{ inputs.summary-title }} ${{ inputs.summary-icon }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Template:** ${{ inputs.template-file }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ inputs.aws-region }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Packaged Template:** ${{ steps.package.outputs.packaged-template-uri }}" >> $GITHUB_STEP_SUMMARY
