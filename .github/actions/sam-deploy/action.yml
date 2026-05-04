@@ -1,0 +1,155 @@
+name: 'SAM Deploy'
+description: 'Deploys a packaged SAM application to CloudFormation'
+
+inputs:
+  # required parameters
+  environment:
+    description: 'Deployment environment (development, staging, production)'
+    required: true
+
+  packaged-template-uri:
+    description: 'S3 URI of the packaged SAM template (output from sam-build-and-package)'
+    required: true
+
+  deployment-role-arn:
+    description: 'ARN of the deployment role to assume for CloudFormation deployment'
+    required: true
+
+  # parameters with defaults
+  stack-name:
+    description: 'CloudFormation stack name'
+    required: false
+    default: ''
+
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'eu-west-2'
+
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role)'
+    required: false
+    default: arn:aws:iam::020844256789:role/github-actions-oidc-entry-role
+
+  parameter-overrides:
+    description: 'SAM parameter overrides (space-separated KEY=VALUE pairs)'
+    required: false
+    default: ''
+
+  capabilities:
+    description: 'CloudFormation capabilities'
+    required: false
+    default: 'CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND'
+
+  # Descriptive Optional Parameters
+  summary-title:
+    description: 'Title for the deployment summary'
+    required: false
+    default: 'SAM Deploy Summary'
+
+  summary-icon:
+    description: 'Icon emoji for the deployment summary'
+    required: false
+    default: ':rocket:'
+
+outputs:
+  stack-outputs:
+    description: 'JSON string of stack outputs'
+    value: ${{ steps.get-outputs.outputs.stack-outputs }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (Deployment Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-deploy
+        role-chaining: true
+
+    - name: Resolve stack name
+      id: resolve
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.stack-name }}" ]; then
+          STACK_NAME="${{ inputs.stack-name }}"
+        else
+          STACK_NAME="${{ github.event.repository.name }}-${{ inputs.environment }}"
+        fi
+        echo "stack-name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Download packaged template from S3
+      shell: bash
+      run: |
+        echo "Downloading packaged template from ${{ inputs.packaged-template-uri }}..."
+        aws s3 cp ${{ inputs.packaged-template-uri }} packaged-template.yaml
+
+    - name: SAM deploy
+      shell: bash
+      run: |
+        echo "Deploying SAM stack: ${{ steps.resolve.outputs.stack-name }}..."
+
+        PARAM_ARGS=""
+        if [ -n "${{ inputs.parameter-overrides }}" ]; then
+          PARAM_ARGS="--parameter-overrides ${{ inputs.parameter-overrides }}"
+        fi
+
+        sam deploy \
+          --template-file packaged-template.yaml \
+          --stack-name ${{ steps.resolve.outputs.stack-name }} \
+          --capabilities ${{ inputs.capabilities }} \
+          --region ${{ inputs.aws-region }} \
+          --tags \
+            Project=${{ github.repository_owner }}-${{ github.event.repository.name }} \
+            ManagedBy=GitHubActions \
+            GitCommit=${{ github.sha }} \
+            Environment=${{ inputs.environment }} \
+          --no-confirm-changeset \
+          --no-fail-on-empty-changeset \
+          $PARAM_ARGS
+
+    - name: Get stack outputs
+      id: get-outputs
+      shell: bash
+      run: |
+        OUTPUTS=$(aws cloudformation describe-stacks \
+          --stack-name ${{ steps.resolve.outputs.stack-name }} \
+          --query 'Stacks[0].Outputs' \
+          --output json)
+
+        echo "Stack outputs:"
+        echo "$OUTPUTS" | jq -r '.[] | "\(.OutputKey): \(.OutputValue)"'
+
+        echo "stack-outputs<<EOF" >> $GITHUB_OUTPUT
+        echo "$OUTPUTS" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Display deployment summary
+      shell: bash
+      run: |
+        echo "### ${{ inputs.summary-title }} ${{ inputs.summary-icon }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Stack Name:** ${{ steps.resolve.outputs.stack-name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Packaged Template:** ${{ inputs.packaged-template-uri }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ inputs.aws-region }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        OUTPUTS=$(aws cloudformation describe-stacks \
+          --stack-name ${{ steps.resolve.outputs.stack-name }} \
+          --query 'Stacks[0].Outputs' \
+          --output json 2>/dev/null || echo "[]")
+
+        if [ "$(echo "$OUTPUTS" | jq 'length')" -gt 0 ]; then
+          echo "#### Stack Outputs" >> $GITHUB_STEP_SUMMARY
+          echo "$OUTPUTS" | jq -r '.[] | "- **\(.OutputKey):** \(.OutputValue)"' >> $GITHUB_STEP_SUMMARY
+        fi

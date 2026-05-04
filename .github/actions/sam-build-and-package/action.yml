@@ -1,0 +1,98 @@
+name: 'SAM Build and Package'
+description: 'Builds and packages a SAM application, uploading artifacts to S3'
+
+inputs:
+  # required parameters
+  environment:
+    description: 'Deployment environment (development, staging, production)'
+    required: true
+
+  deployment-role-arn:
+    description: 'ARN of the deployment role to assume for S3 upload'
+    required: true
+
+  # parameters with defaults
+  template-file:
+    description: 'Path to the SAM template file'
+    required: false
+    default: 'template.yaml'
+
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'eu-west-2'
+
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role)'
+    required: false
+    default: arn:aws:iam::020844256789:role/github-actions-oidc-entry-role
+
+  # Descriptive Optional Parameters
+  summary-title:
+    description: 'Title for the build summary'
+    required: false
+    default: 'SAM Build & Package Summary'
+
+  summary-icon:
+    description: 'Icon emoji for the build summary'
+    required: false
+    default: ':package:'
+
+outputs:
+  packaged-template-uri:
+    description: 'S3 URI of the packaged SAM template'
+    value: ${{ steps.package.outputs.packaged-template-uri }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (Deployment Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-package
+        role-chaining: true
+
+    - name: SAM build
+      shell: bash
+      run: |
+        echo "Building SAM application from ${{ inputs.template-file }}..."
+        sam build --template-file ${{ inputs.template-file }}
+
+    - name: SAM package
+      id: package
+      shell: bash
+      run: |
+        S3_PREFIX="${{ inputs.environment }}/sam/${{ github.sha }}"
+        PACKAGED_TEMPLATE_S3_URI="s3://aws-management-codepipeline/${S3_PREFIX}/packaged-template.yaml"
+
+        echo "Packaging SAM application to s3://aws-management-codepipeline/${S3_PREFIX}/..."
+        sam package \
+          --s3-bucket aws-management-codepipeline \
+          --s3-prefix "${S3_PREFIX}" \
+          --output-template-file packaged-template.yaml \
+          --region ${{ inputs.aws-region }}
+
+        echo "Uploading packaged template to ${PACKAGED_TEMPLATE_S3_URI}..."
+        aws s3 cp packaged-template.yaml "${PACKAGED_TEMPLATE_S3_URI}"
+
+        echo "packaged-template-uri=${PACKAGED_TEMPLATE_S3_URI}" >> $GITHUB_OUTPUT
+
+    - name: Display build summary
+      shell: bash
+      run: |
+        echo "### ${{ inputs.summary-title }} ${{ inputs.summary-icon }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Template:** ${{ inputs.template-file }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ inputs.aws-region }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Packaged Template:** ${{ steps.package.outputs.packaged-template-uri }}" >> $GITHUB_STEP_SUMMARY
