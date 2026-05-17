@@ -1,0 +1,137 @@
+name: 'Delete CloudFormation Change Set'
+description: 'Deletes a CloudFormation change set and cleans up an empty REVIEW_IN_PROGRESS stack if left behind'
+
+inputs:
+  # required parameters
+  environment:
+    description: 'Deployment environment (development, staging, production)'
+    required: true
+
+  changeset-arn:
+    description: 'ARN of the change set to delete (output from aws-cloudformation-create-changeset)'
+    required: true
+
+  deployment-role-arn:
+    description: 'ARN of the deployment role to assume for CloudFormation operations'
+    required: true
+
+  # parameters with defaults
+  stack-name:
+    description: 'CloudFormation stack name'
+    required: false
+    default: ''
+
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'eu-west-2'
+
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role)'
+    required: false
+    default: arn:aws:iam::020844256789:role/github-actions-oidc-entry-role
+
+  # Descriptive Optional Parameters
+  summary-title:
+    description: 'Title for the delete change set summary'
+    required: false
+    default: 'CloudFormation Delete Change Set Summary'
+
+  summary-icon:
+    description: 'Icon emoji for the delete change set summary'
+    required: false
+    default: ':wastebasket:'
+
+outputs:
+  stack-name:
+    description: 'Resolved CloudFormation stack name'
+    value: ${{ steps.resolve.outputs.stack-name }}
+  deleted:
+    description: 'true if the change set existed and was deleted, false if it was already gone'
+    value: ${{ steps.delete.outputs.deleted }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (Deployment Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-deploy
+        role-chaining: true
+
+    - name: Resolve stack name
+      id: resolve
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.stack-name }}" ]; then
+          STACK_NAME="${{ inputs.stack-name }}"
+        else
+          STACK_NAME="${{ github.event.repository.name }}-${{ inputs.environment }}"
+        fi
+        echo "stack-name=${STACK_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Delete change set
+      id: delete
+      shell: bash
+      run: |
+        CHANGESET_ARN="${{ inputs.changeset-arn }}"
+
+        # Check whether the change set still exists (idempotent behavior)
+        CHANGESET_STATUS=$(aws cloudformation describe-change-set \
+          --change-set-name "${CHANGESET_ARN}" \
+          --query 'Status' \
+          --output text 2>/dev/null || echo "NOT_FOUND")
+
+        if [ "${CHANGESET_STATUS}" = "NOT_FOUND" ]; then
+          echo "Change set ${CHANGESET_ARN} not found — nothing to delete"
+          echo "deleted=false" >> $GITHUB_OUTPUT
+          echo "changeset-status=NOT_FOUND" >> $GITHUB_OUTPUT
+        else
+          echo "Deleting change set ${CHANGESET_ARN} (status: ${CHANGESET_STATUS})..."
+          aws cloudformation delete-change-set \
+            --change-set-name "${CHANGESET_ARN}"
+          echo "deleted=true" >> $GITHUB_OUTPUT
+          echo "changeset-status=${CHANGESET_STATUS}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Clean up empty REVIEW_IN_PROGRESS stack
+      id: cleanup
+      shell: bash
+      run: |
+        STACK_NAME="${{ steps.resolve.outputs.stack-name }}"
+
+        STACK_STATUS=$(aws cloudformation describe-stacks \
+          --stack-name "${STACK_NAME}" \
+          --query 'Stacks[0].StackStatus' \
+          --output text 2>/dev/null || echo "STACK_NOT_FOUND")
+
+        if [ "${STACK_STATUS}" = "REVIEW_IN_PROGRESS" ]; then
+          echo "Stack ${STACK_NAME} is in REVIEW_IN_PROGRESS with no resources — deleting"
+          aws cloudformation delete-stack --stack-name "${STACK_NAME}"
+          aws cloudformation wait stack-delete-complete --stack-name "${STACK_NAME}"
+          echo "stack-deleted=true" >> $GITHUB_OUTPUT
+        else
+          echo "Stack ${STACK_NAME} status: ${STACK_STATUS} — leaving stack untouched"
+          echo "stack-deleted=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Display delete summary
+      shell: bash
+      run: |
+        echo "### ${{ inputs.summary-title }} ${{ inputs.summary-icon }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Stack Name:** ${{ steps.resolve.outputs.stack-name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ inputs.aws-region }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Change Set ARN:** ${{ inputs.changeset-arn }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Change Set Deleted:** ${{ steps.delete.outputs.deleted }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Empty Stack Deleted:** ${{ steps.cleanup.outputs.stack-deleted }}" >> $GITHUB_STEP_SUMMARY

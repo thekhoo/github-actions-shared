@@ -34,6 +34,7 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 - `aws-cloudformation-package` — packages a template, uploading local artifacts to S3 under `/${environment}/cloudformation/${sha}/`
 - `aws-cloudformation-create-changeset` — validates, uploads template to S3, creates a change set (accepts local template-file or packaged-template-uri)
 - `aws-cloudformation-execute-changeset` — executes a change set and waits for completion
+- `aws-cloudformation-delete-changeset` — deletes a change set; also deletes the stack if left in `REVIEW_IN_PROGRESS`
 
 **AWS SAM:**
 - `sam-build-and-package` — builds and packages a SAM app, uploads artifacts to S3 under `/${environment}/sam/${sha}/`
