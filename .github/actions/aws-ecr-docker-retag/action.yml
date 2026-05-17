@@ -1,0 +1,137 @@
+name: 'Retag ECR Docker Image'
+description: 'Retags an ECR image (previously pushed with commit-${commit-sha}) as ${environment}-sha256-${short-digest} using crane'
+
+inputs:
+  # required parameters
+  environment:
+    description: 'Deployment environment (development, staging, production) — used as the prefix of the new tag'
+    required: true
+
+  commit-sha:
+    description: 'Git commit SHA of the source image to retag (must already exist as commit-${commit-sha})'
+    required: true
+
+  ecr-role-arn:
+    description: 'ARN of the role with ECR push permissions (assumed via OIDC role chaining)'
+    required: true
+
+  # parameters with defaults
+  repository-name:
+    description: 'ECR repository name'
+    required: false
+    default: ''
+
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'eu-west-2'
+
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role)'
+    required: false
+    default: arn:aws:iam::020844256789:role/github-actions-oidc-entry-role
+
+  # Descriptive Optional Parameters
+  summary-title:
+    description: 'Title for the retag summary'
+    required: false
+    default: 'ECR Docker Retag Summary'
+
+  summary-icon:
+    description: 'Icon emoji for the retag summary'
+    required: false
+    default: ':label:'
+
+outputs:
+  image-uri:
+    description: 'Full image URI (registry/repository:tag) after retagging'
+    value: ${{ steps.retag.outputs.image-uri }}
+  image-tag:
+    description: 'New tag applied to the image (${environment}-sha256-${short-digest})'
+    value: ${{ steps.retag.outputs.image-tag }}
+  image-digest:
+    description: 'Full sha256 digest of the image'
+    value: ${{ steps.retag.outputs.image-digest }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (ECR Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.ecr-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-ecr
+        role-chaining: true
+
+    - name: Resolve repository and registry
+      id: resolve
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.repository-name }}" ]; then
+          REPO_NAME="${{ inputs.repository-name }}"
+        else
+          REPO_NAME="${{ github.event.repository.name }}"
+        fi
+
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ inputs.aws-region }}.amazonaws.com"
+
+        echo "repository-name=${REPO_NAME}" >> $GITHUB_OUTPUT
+        echo "account-id=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+        echo "registry=${REGISTRY}" >> $GITHUB_OUTPUT
+
+    - name: Log in to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Set up crane
+      uses: imjasonh/setup-crane@v0.4
+
+    - name: Retag image
+      id: retag
+      shell: bash
+      run: |
+        REPO="${{ steps.resolve.outputs.registry }}/${{ steps.resolve.outputs.repository-name }}"
+        SOURCE_TAG="commit-${{ inputs.commit-sha }}"
+        SOURCE_URI="${REPO}:${SOURCE_TAG}"
+
+        echo "Looking up digest for ${SOURCE_URI}..."
+        FULL_DIGEST=$(crane digest "${SOURCE_URI}")
+        if [ -z "${FULL_DIGEST}" ]; then
+          echo "Error: could not resolve digest for ${SOURCE_URI}"
+          exit 1
+        fi
+        echo "Full digest: ${FULL_DIGEST}"
+
+        # FULL_DIGEST format: sha256:<64-hex-chars>
+        SHORT_HEX=$(echo "${FULL_DIGEST}" | sed 's/^sha256://' | cut -c1-12)
+        NEW_TAG="${{ inputs.environment }}-sha256-${SHORT_HEX}"
+        NEW_URI="${REPO}:${NEW_TAG}"
+
+        echo "Tagging ${SOURCE_URI} as ${NEW_URI}..."
+        crane tag "${SOURCE_URI}" "${NEW_TAG}"
+
+        echo "image-tag=${NEW_TAG}" >> $GITHUB_OUTPUT
+        echo "image-uri=${NEW_URI}" >> $GITHUB_OUTPUT
+        echo "image-digest=${FULL_DIGEST}" >> $GITHUB_OUTPUT
+
+    - name: Display retag summary
+      shell: bash
+      run: |
+        echo "### ${{ inputs.summary-title }} ${{ inputs.summary-icon }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Repository:** ${{ steps.resolve.outputs.repository-name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Registry:** ${{ steps.resolve.outputs.registry }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ inputs.aws-region }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Source Commit:** ${{ inputs.commit-sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Image Digest:** ${{ steps.retag.outputs.image-digest }}" >> $GITHUB_STEP_SUMMARY
+        echo "**New Tag:** ${{ steps.retag.outputs.image-tag }}" >> $GITHUB_STEP_SUMMARY
+        echo "**New Image URI:** ${{ steps.retag.outputs.image-uri }}" >> $GITHUB_STEP_SUMMARY

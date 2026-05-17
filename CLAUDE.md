@@ -43,6 +43,8 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 **Docker:**
 - `docker-build-and-publish` — build and push image with buildx caching
 - `docker-retag` — retag image at registry level without rebuild
+- `aws-ecr-docker-build-and-publish` — build and push image to ECR (OIDC role chaining), tag with `commit-${sha}`
+- `aws-ecr-docker-retag` — retag ECR image as `${environment}-sha256-${short-digest}` using crane (uses aws-ecr-docker-build-and-publish output)
 
 **Orchestration:**
 - `deploy-infrastructure-and-docker` — orchestrates deployment role, infrastructure, and docker retag (uses aws-cloudformation-deploy + docker-retag)
@@ -63,6 +65,8 @@ aws-cloudformation-execute-changeset → aws-cloudformation-create-changeset (vi
 aws-cloudformation-create-changeset → aws-cloudformation-package (optional, via packaged-template-uri)
 
 sam-deploy → sam-build-and-package (via packaged-template-uri output)
+
+aws-ecr-docker-retag → aws-ecr-docker-build-and-publish (consumes the commit-${sha} tag)
 
 deploy-infrastructure-and-docker → aws-cloudformation-deploy
                                  → docker-retag

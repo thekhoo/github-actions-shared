@@ -1,0 +1,149 @@
+name: 'Build and Publish Docker Image to ECR'
+description: 'Builds a Docker image with buildx and pushes it to an ECR repository tagged with the commit SHA'
+
+inputs:
+  # required parameters
+  commit-sha:
+    description: 'Git commit SHA to use as image tag (image will be tagged commit-${commit-sha})'
+    required: true
+
+  ecr-role-arn:
+    description: 'ARN of the role with ECR push permissions (assumed via OIDC role chaining)'
+    required: true
+
+  # parameters with defaults
+  repository-name:
+    description: 'ECR repository name'
+    required: false
+    default: ''
+
+  aws-region:
+    description: 'AWS region'
+    required: false
+    default: 'eu-west-2'
+
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role)'
+    required: false
+    default: arn:aws:iam::020844256789:role/github-actions-oidc-entry-role
+
+  dockerfile-path:
+    description: 'Path to the Dockerfile'
+    required: false
+    default: './Dockerfile'
+
+  platforms:
+    description: 'Comma-separated list of build platforms (e.g. linux/amd64,linux/arm64)'
+    required: false
+    default: 'linux/amd64'
+
+  # Descriptive Optional Parameters
+  summary-title:
+    description: 'Title for the build summary'
+    required: false
+    default: 'ECR Docker Build and Publish Summary'
+
+  summary-icon:
+    description: 'Icon emoji for the build summary'
+    required: false
+    default: ':whale:'
+
+outputs:
+  image-uri:
+    description: 'Full image URI (registry/repository:tag) that was pushed'
+    value: ${{ steps.tag.outputs.image-uri }}
+  image-tag:
+    description: 'Tag applied to the image (commit-${commit-sha})'
+    value: ${{ steps.tag.outputs.image-tag }}
+  image-digest:
+    description: 'sha256 digest of the pushed image'
+    value: ${{ steps.build.outputs.digest }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (ECR Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.ecr-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-ecr
+        role-chaining: true
+
+    - name: Resolve repository and registry
+      id: resolve
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.repository-name }}" ]; then
+          REPO_NAME="${{ inputs.repository-name }}"
+        else
+          REPO_NAME="${{ github.event.repository.name }}"
+        fi
+
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ inputs.aws-region }}.amazonaws.com"
+
+        echo "repository-name=${REPO_NAME}" >> $GITHUB_OUTPUT
+        echo "account-id=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+        echo "registry=${REGISTRY}" >> $GITHUB_OUTPUT
+
+    - name: Verify ECR repository exists
+      shell: bash
+      run: |
+        REPO_NAME="${{ steps.resolve.outputs.repository-name }}"
+        if ! aws ecr describe-repositories --repository-names "${REPO_NAME}" >/dev/null 2>&1; then
+          echo "Error: ECR repository '${REPO_NAME}' does not exist in account ${{ steps.resolve.outputs.account-id }} (${{ inputs.aws-region }})."
+          echo "Create the repository via CloudFormation/Terraform before running this action."
+          exit 1
+        fi
+
+    - name: Log in to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Compute image tag
+      id: tag
+      shell: bash
+      run: |
+        IMAGE_TAG="commit-${{ inputs.commit-sha }}"
+        IMAGE_URI="${{ steps.resolve.outputs.registry }}/${{ steps.resolve.outputs.repository-name }}:${IMAGE_TAG}"
+        echo "image-tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+        echo "image-uri=${IMAGE_URI}" >> $GITHUB_OUTPUT
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ${{ inputs.dockerfile-path }}
+        push: true
+        tags: ${{ steps.tag.outputs.image-uri }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: ${{ inputs.platforms }}
+
+    - name: Display build summary
+      shell: bash
+      run: |
+        echo "### ${{ inputs.summary-title }} ${{ inputs.summary-icon }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Repository:** ${{ steps.resolve.outputs.repository-name }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Registry:** ${{ steps.resolve.outputs.registry }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Region:** ${{ inputs.aws-region }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ inputs.commit-sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Platforms:** ${{ inputs.platforms }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Image Tag:** ${{ steps.tag.outputs.image-tag }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Image URI:** ${{ steps.tag.outputs.image-uri }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Image Digest:** ${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
