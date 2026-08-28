@@ -6,6 +6,9 @@
 # must stay in the caller's workflow. Use the companion action
 # github-publish-release to create the GitHub Release after PyPI succeeds.
 #
+# Runs semantic-release via pip instead of the upstream Docker action to
+# allow pinning gitpython (see issue python-semantic-release#1476).
+#
 # Usage:
 #
 #   - uses: thekhoo/github-actions-shared/.github/actions/python-semantic-release@main
@@ -25,11 +28,11 @@ name: "Python Semantic Release"
 description: >
   Analyse conventional commits, bump version in pyproject.toml,
   and create a git tag.
- 
+
 branding:
   icon: "package"
   color: "green"
- 
+
 inputs:
   github-token:
     description: "GitHub token with contents: write permission"
@@ -46,7 +49,7 @@ inputs:
     description: "Email for the version bump commit"
     required: false
     default: "github-actions[bot]@users.noreply.github.com"
- 
+
 outputs:
   released:
     description: "'true' if a new version was released"
@@ -57,7 +60,7 @@ outputs:
   tag:
     description: "The git tag created (e.g. v1.3.0)"
     value: ${{ steps.semrel.outputs.tag }}
- 
+
 runs:
   using: "composite"
   steps:
@@ -70,16 +73,26 @@ runs:
         else
           git fetch --tags
         fi
- 
+
     - uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
- 
+
+    - name: Install semantic-release
+      shell: bash
+      run: |
+        pip install "python-semantic-release==10.6.1" "gitpython>=3.1,<3.1.60"
+
+    - name: Configure git
+      shell: bash
+      run: |
+        git config user.name "${{ inputs.git-committer-name }}"
+        git config user.email "${{ inputs.git-committer-email }}"
+
     - name: Semantic Release
       id: semrel
-      uses: python-semantic-release/python-semantic-release@v10.6.1
-      with:
-        github_token: ${{ inputs.github-token }}
-        git_committer_name: ${{ inputs.git-committer-name }}
-        git_committer_email: ${{ inputs.git-committer-email }}
- 
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        semantic-release -v version
