@@ -28,6 +28,10 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 - `python-semantic-release` — version bump, commit, tag (no GitHub Release)
 - `github-publish-release` — creates GitHub Release for a tag (run after PyPI publish)
 
+**Reusable Workflows:**
+- `python-ci` — linting + pytest matrix (workflow)
+- `python-pypi-deploy` — semantic release → GitHub Release → PyPI publish (workflow)
+
 **AWS CloudFormation:**
 - `aws-cloudformation-validate` — cfn-lint + AWS API validation with OIDC role chaining
 - `aws-cloudformation-deploy` — validates then deploys a stack (uses aws-cloudformation-validate)
@@ -57,6 +61,10 @@ python-linting ──┐
 python-pytest ───┘
 
 python-semantic-release → (PyPI publish) → github-publish-release
+
+python-pypi-deploy (workflow) → python-semantic-release
+                               → github-publish-release (via publish-action)
+                               → pypa/gh-action-pypi-publish
 
 aws-cloudformation-deploy → aws-cloudformation-validate
 
