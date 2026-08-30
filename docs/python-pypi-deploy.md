@@ -31,6 +31,7 @@ jobs:
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `python-version` | No | `3.12` | Python version for building |
+| `environment` | No | `production` | GitHub environment for the deploy job (must match PyPI trusted publisher config) |
 
 ## Outputs
 
@@ -45,12 +46,12 @@ jobs:
 **Release job:**
 1. Checks out the repository with full git history
 2. Runs `python-semantic-release` to analyse conventional commits, bump version, and create a tag
-3. Creates a GitHub Release with build artifacts
-4. Uploads distribution artifacts for the deploy job
+3. Uploads distribution artifacts for the deploy job
 
 **Deploy job** (only runs if a release was made):
 1. Downloads the distribution artifacts
 2. Publishes to PyPI using [trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC)
+3. Creates a GitHub Release with build artifacts (only after successful PyPI publish)
 
 ## Requirements
 
