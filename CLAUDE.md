@@ -50,6 +50,10 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 - `aws-ecr-docker-build-and-publish` — build and push image to ECR (OIDC role chaining), tag with `commit-${sha}`
 - `aws-ecr-docker-retag` — retag ECR image as `${environment}-sha256-${short-digest}` using crane (uses aws-ecr-docker-build-and-publish output)
 
+**AWS OpenTofu:**
+- `opentofu-validate` — format check and config validation (no backend, no AWS credentials required)
+- `opentofu-deploy` — plan and apply OpenTofu with S3 state backend and DynamoDB locking
+
 **Orchestration:**
 - `deploy-infrastructure-and-docker` — orchestrates deployment role, infrastructure, and docker retag (uses aws-cloudformation-deploy + docker-retag)
 

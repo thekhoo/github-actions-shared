@@ -1,0 +1,46 @@
+name: 'OpenTofu Validate'
+description: >-
+  Validate OpenTofu configuration files: format check and config validation.
+  Runs without a real backend (no AWS credentials required) — safe for CI and
+  lint pipelines on every push or pull request.
+
+inputs:
+  working-directory:
+    description: 'Directory containing OpenTofu configuration files.'
+    required: false
+    default: '.'
+  opentofu-version:
+    description: 'OpenTofu version to install (e.g. 1.8.0, latest).'
+    required: false
+    default: 'latest'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup OpenTofu
+      uses: opentofu/setup-opentofu@v1
+      with:
+        tofu_version: ${{ inputs.opentofu-version }}
+        tofu_wrapper: false
+
+    - name: OpenTofu Format Check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Checking OpenTofu formatting..."
+        tofu fmt -check -recursive
+        echo "Format check passed."
+
+    - name: OpenTofu Init (no backend)
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      # -backend=false skips backend initialisation so no AWS credentials are needed.
+      run: tofu init -backend=false
+
+    - name: OpenTofu Validate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "Validating OpenTofu configuration..."
+        tofu validate
+        echo "Validation passed."

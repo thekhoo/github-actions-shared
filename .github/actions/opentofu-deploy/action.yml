@@ -1,0 +1,108 @@
+name: 'OpenTofu Deploy'
+description: >-
+  Deploy infrastructure using OpenTofu with S3 state backend
+  (aws-management-codepipeline) and DynamoDB locking
+  (aws-management-opentofu-deployment-locks).
+  State key: {environment}/opentofu/{service-name}/terraform.tfstate
+  AWS credentials must be configured before calling this action.
+
+inputs:
+  environment:
+    description: 'Deployment environment (e.g. production, staging). Used in the S3 state key.'
+    required: true
+  service-name:
+    description: 'Service name. Used in the S3 state key: {environment}/opentofu/{service-name}/terraform.tfstate'
+    required: true
+  working-directory:
+    description: 'Directory containing OpenTofu configuration files.'
+    required: false
+    default: '.'
+  opentofu-version:
+    description: 'OpenTofu version to install (e.g. 1.8.0, latest).'
+    required: false
+    default: 'latest'
+  aws-region:
+    description: 'AWS region for S3 backend and DynamoDB table.'
+    required: false
+    default: 'ap-southeast-1'
+  plan-only:
+    description: 'Set to "true" to generate a plan without applying (useful for PRs).'
+    required: false
+    default: 'false'
+  var-file:
+    description: 'Path to a .tfvars file relative to working-directory (optional).'
+    required: false
+    default: ''
+  additional-init-args:
+    description: 'Extra arguments appended to `tofu init` (e.g. -upgrade).'
+    required: false
+    default: ''
+
+outputs:
+  plan-exit-code:
+    description: 'Exit code from `tofu plan -detailed-exitcode` (0=no changes, 2=changes present).'
+    value: ${{ steps.plan.outputs.exit-code }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup OpenTofu
+      uses: opentofu/setup-opentofu@v1
+      with:
+        tofu_version: ${{ inputs.opentofu-version }}
+        # Disable wrapper so we can capture plan's detailed exit code directly.
+        tofu_wrapper: false
+
+    - name: OpenTofu Init
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        tofu init \
+          -backend-config="bucket=aws-management-codepipeline" \
+          -backend-config="key=${{ inputs.environment }}/opentofu/${{ inputs.service-name }}/terraform.tfstate" \
+          -backend-config="region=${{ inputs.aws-region }}" \
+          -backend-config="dynamodb_table=aws-management-opentofu-deployment-locks" \
+          -backend-config="encrypt=true" \
+          ${{ inputs.additional-init-args }}
+
+    - name: OpenTofu Plan
+      id: plan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        VAR_FILE_ARG=""
+        if [ -n "${{ inputs.var-file }}" ]; then
+          VAR_FILE_ARG="-var-file=${{ inputs.var-file }}"
+        fi
+
+        set +e
+        tofu plan -detailed-exitcode -out=tfplan $VAR_FILE_ARG
+        EXIT_CODE=$?
+        set -e
+
+        echo "exit-code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+
+        if [ "$EXIT_CODE" -eq 1 ]; then
+          echo "::error::OpenTofu plan failed with an error."
+          exit 1
+        fi
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          echo "No infrastructure changes detected."
+        else
+          echo "Infrastructure changes detected (exit code 2)."
+        fi
+
+    - name: Upload plan artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: opentofu-plan-${{ inputs.environment }}-${{ inputs.service-name }}
+        path: ${{ inputs.working-directory }}/tfplan
+        retention-days: 5
+
+    - name: OpenTofu Apply
+      # Only apply when plan-only is false and there are actual changes to apply.
+      if: inputs.plan-only != 'true' && steps.plan.outputs.exit-code == '2'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: tofu apply -auto-approve tfplan
