@@ -26,7 +26,7 @@ inputs:
   aws-region:
     description: 'AWS region for S3 backend and DynamoDB table.'
     required: false
-    default: 'ap-southeast-1'
+    default: 'eu-west-2'
   oidc-entry-role-arn:
     description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role).'
     required: false
