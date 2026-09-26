@@ -24,7 +24,9 @@ State key pattern: `{environment}/opentofu/{service-name}/terraform.tfstate`
 | `deployment-role-arn` | Yes | - | ARN of the deployment role to assume for OpenTofu operations |
 | `working-directory` | No | `.` | Directory containing OpenTofu configuration files |
 | `opentofu-version` | No | `latest` | OpenTofu version to install (e.g. `1.8.0`, `latest`) |
-| `aws-region` | No | `ap-southeast-1` | AWS region for S3 backend and DynamoDB table |
+| `aws-region` | No | `eu-west-2` | AWS region for S3 backend and DynamoDB table |
+| `state-bucket` | No | `aws-management-codepipeline` | S3 bucket for OpenTofu state |
+| `lock-table` | No | `aws-management-opentofu-deployment-locks` | DynamoDB table for state locking |
 | `oidc-entry-role-arn` | No | `arn:aws:iam::020844256789:role/github-actions-oidc-entry-role` | ARN of the OIDC entry role |
 | `plan-only` | No | `false` | Set to `"true"` to generate a plan without applying (useful for PRs) |
 | `var-file` | No | `` | Path to a `.tfvars` file relative to `working-directory` |
@@ -49,4 +51,4 @@ State key pattern: `{environment}/opentofu/{service-name}/terraform.tfstate`
 ## Requirements
 
 - The GitHub Actions workflow must have `id-token: write` permission to authenticate via OIDC
-- The deployment role must have access to the S3 bucket (`aws-management-codepipeline`) and DynamoDB table (`aws-management-opentofu-deployment-locks`)
+- The deployment role must have access to the S3 bucket (`state-bucket`) and DynamoDB table (`lock-table`)

@@ -27,6 +27,14 @@ inputs:
     description: 'AWS region for S3 backend and DynamoDB table.'
     required: false
     default: 'eu-west-2'
+  state-bucket:
+    description: 'S3 bucket name for OpenTofu state. State is stored under /{environment}/opentofu/{service-name}/terraform.tfstate.'
+    required: false
+    default: 'aws-management-codepipeline'
+  lock-table:
+    description: 'DynamoDB table name for OpenTofu state locking.'
+    required: false
+    default: 'aws-management-opentofu-deployment-locks'
   oidc-entry-role-arn:
     description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role).'
     required: false
@@ -79,10 +87,10 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         tofu init \
-          -backend-config="bucket=aws-management-codepipeline" \
+          -backend-config="bucket=${{ inputs.state-bucket }}" \
           -backend-config="key=${{ inputs.environment }}/opentofu/${{ inputs.service-name }}/terraform.tfstate" \
           -backend-config="region=${{ inputs.aws-region }}" \
-          -backend-config="dynamodb_table=aws-management-opentofu-deployment-locks" \
+          -backend-config="dynamodb_table=${{ inputs.lock-table }}" \
           -backend-config="encrypt=true" \
           ${{ inputs.additional-init-args }}
 
