@@ -4,7 +4,6 @@ description: >-
   (aws-management-codepipeline) and DynamoDB locking
   (aws-management-opentofu-deployment-locks).
   State key: {environment}/opentofu/{service-name}/terraform.tfstate
-  AWS credentials must be configured before calling this action.
 
 inputs:
   environment:
@@ -12,6 +11,9 @@ inputs:
     required: true
   service-name:
     description: 'Service name. Used in the S3 state key: {environment}/opentofu/{service-name}/terraform.tfstate'
+    required: true
+  deployment-role-arn:
+    description: 'ARN of the deployment role to assume for OpenTofu operations.'
     required: true
   working-directory:
     description: 'Directory containing OpenTofu configuration files.'
@@ -25,6 +27,10 @@ inputs:
     description: 'AWS region for S3 backend and DynamoDB table.'
     required: false
     default: 'ap-southeast-1'
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role).'
+    required: false
+    default: 'arn:aws:iam::020844256789:role/github-actions-oidc-entry-role'
   plan-only:
     description: 'Set to "true" to generate a plan without applying (useful for PRs).'
     required: false
@@ -52,6 +58,21 @@ runs:
         tofu_version: ${{ inputs.opentofu-version }}
         # Disable wrapper so we can capture plan's detailed exit code directly.
         tofu_wrapper: false
+
+    - name: Configure AWS credentials (OIDC Entry Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (Deployment Role)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-deploy
+        role-chaining: true
 
     - name: OpenTofu Init
       shell: bash
