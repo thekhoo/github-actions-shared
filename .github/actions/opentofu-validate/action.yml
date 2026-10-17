@@ -1,8 +1,9 @@
 name: 'OpenTofu Validate'
 description: >-
   Validate OpenTofu configuration files: format check and config validation.
-  Runs without a real backend (no AWS credentials required) — safe for CI and
-  lint pipelines on every push or pull request.
+  Runs without a real backend. AWS credentials are required only when
+  `deployment-role-arn` is set, to read the access token for the private
+  terraform-modules repository.
 
 inputs:
   working-directory:
@@ -13,6 +14,25 @@ inputs:
     description: 'OpenTofu version to install (e.g. 1.8.0, latest).'
     required: false
     default: 'latest'
+  deployment-role-arn:
+    description: >-
+      ARN of the deployment role to assume. Set it when the configuration uses modules from the private
+      terraform-modules repository. The action then reads the access token with this role before `tofu init`.
+      Leave it empty to run without AWS credentials.
+    required: false
+    default: ''
+  oidc-entry-role-arn:
+    description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role). Used only when deployment-role-arn is set.'
+    required: false
+    default: 'arn:aws:iam::020844256789:role/github-actions-oidc-entry-role'
+  aws-region:
+    description: 'AWS region of the SSM parameter. Used only when deployment-role-arn is set.'
+    required: false
+    default: 'eu-west-2'
+  modules-token-parameter:
+    description: 'Name of the SSM parameter that holds the GitHub access token. Used only when deployment-role-arn is set.'
+    required: false
+    default: '/shared/terraform-modules/exported/github/access-token'
 
 runs:
   using: 'composite'
@@ -22,6 +42,30 @@ runs:
       with:
         tofu_version: ${{ inputs.opentofu-version }}
         tofu_wrapper: false
+
+    - name: Configure AWS credentials (OIDC Entry Role)
+      if: inputs.deployment-role-arn != ''
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-entry-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}
+
+    - name: Configure AWS credentials (Deployment Role)
+      if: inputs.deployment-role-arn != ''
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.deployment-role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-validate
+        role-chaining: true
+
+    - name: Configure access to terraform-modules
+      if: inputs.deployment-role-arn != '' && inputs.modules-token-parameter != ''
+      uses: thekhoo/github-actions-shared/.github/actions/opentofu-modules-access@main
+      with:
+        parameter-name: ${{ inputs.modules-token-parameter }}
+        aws-region: ${{ inputs.aws-region }}
 
     - name: OpenTofu Format Check
       shell: bash
@@ -34,7 +78,7 @@ runs:
     - name: OpenTofu Init (no backend)
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      # -backend=false skips backend initialisation so no AWS credentials are needed.
+      # -backend=false skips backend initialisation, so the backend needs no AWS credentials.
       run: tofu init -backend=false
 
     - name: OpenTofu Validate
