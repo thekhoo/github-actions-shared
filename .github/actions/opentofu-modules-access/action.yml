@@ -1,0 +1,52 @@
+name: 'OpenTofu Modules Access'
+description: >-
+  Give OpenTofu read access to the private terraform-modules repository.
+  Reads the GitHub access token from an SSM SecureString parameter and makes Git
+  use the token for that repository only. AWS credentials must already be configured
+  with permission to read the parameter.
+
+inputs:
+  parameter-name:
+    description: 'Name of the SSM SecureString parameter that holds the GitHub access token.'
+    required: false
+    default: '/shared/terraform-modules/exported/github/access-token'
+  repository:
+    description: 'GitHub repository (owner/name) that the token gives access to.'
+    required: false
+    default: 'thekhoo/terraform-modules'
+  aws-region:
+    description: 'AWS region of the SSM parameter.'
+    required: false
+    default: 'eu-west-2'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Read access token and configure Git
+      shell: bash
+      env:
+        PARAMETER_NAME: ${{ inputs.parameter-name }}
+        REPOSITORY: ${{ inputs.repository }}
+        AWS_REGION_INPUT: ${{ inputs.aws-region }}
+      run: |
+        set -euo pipefail
+
+        token="$(aws ssm get-parameter \
+          --name "${PARAMETER_NAME}" \
+          --with-decryption \
+          --region "${AWS_REGION_INPUT}" \
+          --query Parameter.Value \
+          --output text)"
+
+        # Mask the token before anything else can print it.
+        echo "::add-mask::${token}"
+
+        # GIT_CONFIG_* variables apply to every later step and leave no token on disk.
+        index="${GIT_CONFIG_COUNT:-0}"
+        {
+          echo "GIT_CONFIG_COUNT=$((index + 1))"
+          echo "GIT_CONFIG_KEY_${index}=url.https://x-access-token:${token}@github.com/${REPOSITORY}.insteadOf"
+          echo "GIT_CONFIG_VALUE_${index}=https://github.com/${REPOSITORY}"
+        } >> "${GITHUB_ENV}"
+
+        echo "Git now uses the access token from ${PARAMETER_NAME} for github.com/${REPOSITORY}."
