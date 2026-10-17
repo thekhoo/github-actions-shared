@@ -31,6 +31,7 @@ State key pattern: `{environment}/opentofu/{service-name}/terraform.tfstate`
 | `plan-only` | No | `false` | Set to `"true"` to generate a plan without applying (useful for PRs) |
 | `var-file` | No | `` | Path to a `.tfvars` file relative to `working-directory` |
 | `additional-init-args` | No | `` | Extra arguments appended to `tofu init` (e.g. `-upgrade`) |
+| `modules-token-parameter` | No | `/shared/terraform-modules/exported/github/access-token` | SSM parameter that holds the GitHub access token for the private `terraform-modules` repository. Set to an empty string to skip |
 
 ## Outputs
 
@@ -43,12 +44,15 @@ State key pattern: `{environment}/opentofu/{service-name}/terraform.tfstate`
 1. Installs OpenTofu via `opentofu/setup-opentofu@v1`
 2. **Assume OIDC entry role**: Authenticates via GitHub OIDC to assume the entry role
 3. **Assume deployment role**: Chains from the entry role to the specified `deployment-role-arn`
-4. **Init**: Runs `tofu init` with S3 backend config (bucket, state key, region, DynamoDB lock table)
-5. **Plan**: Runs `tofu plan -detailed-exitcode -out=tfplan`, capturing whether changes exist
-6. **Upload plan**: Uploads the plan file as a GitHub Actions artifact (retained 5 days)
-7. **Apply**: Runs `tofu apply -auto-approve tfplan` — skipped when `plan-only=true` or there are no changes
+4. **Modules access**: Reads the access token from `modules-token-parameter` with the deployment role. Git then uses the token for the `terraform-modules` repository (see `opentofu-modules-access`). The action skips this step when the input is empty
+5. **Init**: Runs `tofu init` with S3 backend config (bucket, state key, region, DynamoDB lock table)
+6. **Plan**: Runs `tofu plan -detailed-exitcode -out=tfplan`, capturing whether changes exist
+7. **Upload plan**: Uploads the plan file as a GitHub Actions artifact (retained 5 days)
+8. **Apply**: Runs `tofu apply -auto-approve tfplan` — skipped when `plan-only=true` or there are no changes
 
 ## Requirements
 
 - The GitHub Actions workflow must have `id-token: write` permission to authenticate via OIDC
 - The deployment role must have access to the S3 bucket (`state-bucket`) and DynamoDB table (`lock-table`)
+- The deployment role must have `ssm:GetParameter` on `modules-token-parameter`. If the role cannot read the parameter, the action fails. Set `modules-token-parameter` to an empty string for a configuration that uses no private modules
+- Module sources for `terraform-modules` must use HTTPS URLs
