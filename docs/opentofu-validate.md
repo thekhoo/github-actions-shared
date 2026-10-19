@@ -1,13 +1,27 @@
 # opentofu-validate
 
-Validates OpenTofu configuration files: format check and config validation. Runs without a real backend (no AWS credentials required) — safe for CI and lint pipelines on every push or pull request.
+Validates OpenTofu configuration files: formatting and configuration correctness. Runs without a real backend, so it is safe for CI and lint pipelines on every push or pull request. By default the action assumes the deployment role to read the access token for the private `terraform-modules` repository. Set `deployment-role-arn` to an empty string to skip the AWS steps.
 
 ## Usage
+
+The workflow needs the permission `id-token: write`, because the action assumes the deployment role by default.
+
+```yaml
+permissions:
+  id-token: write
+
+- uses: thekhoo/github-actions-shared/.github/actions/opentofu-validate@main
+  with:
+    working-directory: 'infrastructure/tofu'
+```
+
+Usage without AWS credentials (the configuration uses no private modules):
 
 ```yaml
 - uses: thekhoo/github-actions-shared/.github/actions/opentofu-validate@main
   with:
     working-directory: 'infrastructure/tofu'
+    deployment-role-arn: ''
 ```
 
 ## Inputs
@@ -16,14 +30,20 @@ Validates OpenTofu configuration files: format check and config validation. Runs
 |-------|----------|---------|-------------|
 | `working-directory` | No | `.` | Directory containing OpenTofu configuration files |
 | `opentofu-version` | No | `latest` | OpenTofu version to install (e.g. `1.8.0`, `latest`) |
+| `deployment-role-arn` | No | `arn:aws:iam::020844256789:role/github-actions-create-deployment-role` | ARN of the deployment role to assume. The action reads the access token with this role. Set to an empty string to run without AWS credentials |
+| `oidc-entry-role-arn` | No | `arn:aws:iam::020844256789:role/github-actions-oidc-entry-role` | ARN of the OIDC entry role. The action uses it only when `deployment-role-arn` has a value |
+| `aws-region` | No | `eu-west-2` | AWS region of the SSM parameter. The action uses it only when `deployment-role-arn` has a value |
+| `modules-token-parameter` | No | `/shared/terraform-modules/exported/github/access-token` | SSM parameter that holds the GitHub access token. The action uses it only when `deployment-role-arn` has a value |
 
 ## What it does
 
 1. Installs OpenTofu via `opentofu/setup-opentofu@v1`
-2. **Format check**: Runs `tofu fmt -check -recursive` — fails if any files are not formatted
-3. **Init (no backend)**: Runs `tofu init -backend=false` to download providers without requiring AWS credentials
-4. **Validate**: Runs `tofu validate` to check configuration correctness
+2. **Modules access** (only when `deployment-role-arn` has a value): Assumes the OIDC entry role, then the deployment role. Reads the access token from `modules-token-parameter`. Git then uses the token for the `terraform-modules` repository (see `opentofu-modules-access`)
+3. **Format**: Runs `tofu fmt -check -recursive`. The step fails if any file is not formatted
+4. **Init (no backend)**: Runs `tofu init -backend=false` to download providers and modules
+5. **Validate**: Runs `tofu validate` to check configuration correctness
 
 ## Requirements
 
-- No AWS credentials required — backend is skipped during validation
+- The action needs no AWS credentials when `deployment-role-arn` is empty. This works only when all modules are public or local.
+- When `deployment-role-arn` has a value, the workflow needs the permission `id-token: write`. The role needs `ssm:GetParameter` on `modules-token-parameter`.
