@@ -51,7 +51,7 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 - `aws-ecr-docker-retag` — retag ECR image as `${environment}-sha256-${short-digest}` using crane (uses aws-ecr-docker-build-and-publish output)
 
 **AWS OpenTofu:**
-- `opentofu-validate` — format check and config validation (no backend, AWS credentials only when private modules need the access token; uses opentofu-modules-access)
+- `opentofu-validate` — format check and config validation (no backend; assumes the deployment role by default to read the access token for private modules; uses opentofu-modules-access)
 - `opentofu-deploy` — plan and apply OpenTofu with S3 state backend and DynamoDB locking (uses opentofu-modules-access)
 - `opentofu-modules-access` — reads the GitHub access token from SSM and gives Git read access to the private `terraform-modules` repository
 
@@ -82,7 +82,7 @@ sam-deploy → sam-build-and-package (via packaged-template-uri output)
 aws-ecr-docker-retag → aws-ecr-docker-build-and-publish (consumes the commit-${sha} tag)
 
 opentofu-deploy → opentofu-modules-access
-opentofu-validate → opentofu-modules-access (only when deployment-role-arn is set)
+opentofu-validate → opentofu-modules-access (skipped when deployment-role-arn is empty)
 
 deploy-infrastructure-and-docker → aws-cloudformation-deploy
                                  → docker-retag

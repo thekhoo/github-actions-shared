@@ -1,16 +1,10 @@
 # opentofu-validate
 
-Validates OpenTofu configuration files: formatting and configuration correctness. Runs without a real backend, so it is safe for CI and lint pipelines on every push or pull request. The action needs AWS credentials only when the configuration uses modules from the private `terraform-modules` repository.
+Validates OpenTofu configuration files: formatting and configuration correctness. Runs without a real backend, so it is safe for CI and lint pipelines on every push or pull request. By default the action assumes the deployment role to read the access token for the private `terraform-modules` repository. Set `deployment-role-arn` to an empty string to skip the AWS steps.
 
 ## Usage
 
-```yaml
-- uses: thekhoo/github-actions-shared/.github/actions/opentofu-validate@main
-  with:
-    working-directory: 'infrastructure/tofu'
-```
-
-Usage with private modules:
+The workflow needs the permission `id-token: write`, because the action assumes the deployment role by default.
 
 ```yaml
 permissions:
@@ -19,7 +13,15 @@ permissions:
 - uses: thekhoo/github-actions-shared/.github/actions/opentofu-validate@main
   with:
     working-directory: 'infrastructure/tofu'
-    deployment-role-arn: 'arn:aws:iam::020844256789:role/github-actions-create-deployment-role'
+```
+
+Usage without AWS credentials (the configuration uses no private modules):
+
+```yaml
+- uses: thekhoo/github-actions-shared/.github/actions/opentofu-validate@main
+  with:
+    working-directory: 'infrastructure/tofu'
+    deployment-role-arn: ''
 ```
 
 ## Inputs
@@ -28,7 +30,7 @@ permissions:
 |-------|----------|---------|-------------|
 | `working-directory` | No | `.` | Directory containing OpenTofu configuration files |
 | `opentofu-version` | No | `latest` | OpenTofu version to install (e.g. `1.8.0`, `latest`) |
-| `deployment-role-arn` | No | `` | ARN of the deployment role to assume. Set it when the configuration uses modules from the private `terraform-modules` repository. Leave it empty to run without AWS credentials |
+| `deployment-role-arn` | No | `arn:aws:iam::020844256789:role/github-actions-create-deployment-role` | ARN of the deployment role to assume. The action reads the access token with this role. Set to an empty string to run without AWS credentials |
 | `oidc-entry-role-arn` | No | `arn:aws:iam::020844256789:role/github-actions-oidc-entry-role` | ARN of the OIDC entry role. The action uses it only when `deployment-role-arn` has a value |
 | `aws-region` | No | `eu-west-2` | AWS region of the SSM parameter. The action uses it only when `deployment-role-arn` has a value |
 | `modules-token-parameter` | No | `/shared/terraform-modules/exported/github/access-token` | SSM parameter that holds the GitHub access token. The action uses it only when `deployment-role-arn` has a value |

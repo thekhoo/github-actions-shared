@@ -1,9 +1,9 @@
 name: 'OpenTofu Validate'
 description: >-
   Validate OpenTofu configuration files: format check and config validation.
-  Runs without a real backend. AWS credentials are required only when
-  `deployment-role-arn` is set, to read the access token for the private
-  terraform-modules repository.
+  Runs without a real backend. By default the action assumes the deployment role
+  to read the access token for the private terraform-modules repository.
+  Set `deployment-role-arn` to an empty string to run without AWS credentials.
 
 inputs:
   working-directory:
@@ -16,11 +16,11 @@ inputs:
     default: 'latest'
   deployment-role-arn:
     description: >-
-      ARN of the deployment role to assume. Set it when the configuration uses modules from the private
-      terraform-modules repository. The action then reads the access token with this role before `tofu init`.
-      Leave it empty to run without AWS credentials.
+      ARN of the deployment role to assume. The action reads the access token for the private
+      terraform-modules repository with this role before `tofu init`.
+      Set to an empty string to run without AWS credentials.
     required: false
-    default: ''
+    default: 'arn:aws:iam::020844256789:role/github-actions-create-deployment-role'
   oidc-entry-role-arn:
     description: 'ARN of the OIDC entry role (github-actions-oidc-entry-role). Used only when deployment-role-arn is set.'
     required: false
