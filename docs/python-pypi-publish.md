@@ -1,5 +1,7 @@
 # python-pypi-publish
 
+To publish a new repository, follow [pypi-onboard-repo.md](pypi-onboard-repo.md).
+
 A composite action that builds a ref and publishes it to a Python package index with trusted publishing (OIDC).
 
 It does not calculate versions, tag, or create a GitHub Release. Run it after [`github-tag-release`](github-tag-release.md) (release-please) has created the release.
