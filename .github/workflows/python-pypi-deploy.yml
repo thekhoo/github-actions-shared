@@ -1,3 +1,4 @@
+# DEPRECATED: use github-tag-release (release-please) and python-pypi-publish instead.
 name: Python PyPI Deploy
 
 on:
@@ -33,6 +34,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Warn that this workflow is deprecated
+        run: echo "::warning title=Deprecated::python-pypi-deploy is deprecated. Use github-tag-release and python-pypi-publish instead."
+
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
