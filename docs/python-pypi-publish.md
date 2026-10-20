@@ -47,7 +47,7 @@ The job sets `environment` and the permission `id-token: write`.
 | `repository-url` | No | `https://upload.pypi.org/legacy/` | Upload URL of the package index |
 | `build-command` | No | `uv build` | Command that builds the distributions into `packages-dir` |
 | `packages-dir` | No | `dist` | Directory that holds the built distributions |
-| `skip-existing` | No | `false` | Skip files that the index already has instead of failing |
+| `check-url` | No | *(empty)* | Index URL to check for files that already exist, so they are skipped instead of failing. For TestPyPI use `https://test.pypi.org/simple/` |
 
 ## Publish to TestPyPI
 
@@ -66,7 +66,7 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name }}
           repository-url: https://test.pypi.org/legacy/
-          skip-existing: true
+          check-url: https://test.pypi.org/simple/
 ```
 
 For another index, set `repository-url` to its upload URL and set up a trusted publisher on that index.
@@ -88,4 +88,8 @@ If publishing fails with `invalid-publisher`, compare these three fields with th
 1. Checks out `ref`.
 2. Sets up `uv`.
 3. Runs `build-command`.
-4. Publishes `packages-dir` with `pypa/gh-action-pypi-publish`.
+4. Publishes `packages-dir` with `uv publish --trusted-publishing always`.
+
+## Why `uv publish`
+
+`pypa/gh-action-pypi-publish` cannot run inside another action. It builds the name of its container image from the outermost action's repository, so the nested call tries to pull `ghcr.io/thekhoo/github-actions-shared` and fails with `denied`. `uv publish` has no such limit. It does not create PEP 740 attestations, which the PyPA action creates by default.

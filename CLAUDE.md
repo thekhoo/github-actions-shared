@@ -73,7 +73,7 @@ python-pytest ───┘
 
 python-semantic-release → (PyPI publish) → github-publish-release
 
-python-pypi-publish → pypa/gh-action-pypi-publish
+python-pypi-publish → uv publish (trusted publishing)
 
 python-pypi-deploy (workflow, deprecated) → python-semantic-release
                                → github-publish-release (via publish-action)
