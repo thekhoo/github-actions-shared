@@ -1,0 +1,78 @@
+# ============================================================================
+# Composite action — Python PyPI Publish
+#
+# Builds a ref (usually a release tag) and publishes it to a Python package
+# index with trusted publishing (OIDC). It does not calculate versions or tag
+# anything. Use it after github-tag-release (release-please) has created the
+# release.
+#
+# This is an action, not a reusable workflow, on purpose: PyPI trusted
+# publishing does not accept a reusable workflow in another repository. A
+# composite action runs inside the caller's job, so the trusted publisher
+# names the caller's own workflow file.
+#
+# Usage (in a workflow that runs on `release: published`):
+#
+#   jobs:
+#     publish:
+#       runs-on: ubuntu-latest
+#       environment: production
+#       permissions:
+#         contents: read
+#         id-token: write
+#       steps:
+#         - uses: thekhoo/github-actions-shared/.github/actions/python-pypi-publish@main
+#           with:
+#             ref: ${{ github.event.release.tag_name }}
+#
+# For TestPyPI, set `environment: testpypi` on the job and add:
+#             repository-url: https://test.pypi.org/legacy/
+# ============================================================================
+name: "Python PyPI Publish"
+description: >
+  Build a ref and publish it to PyPI (or another index) with trusted publishing.
+
+branding:
+  icon: "upload-cloud"
+  color: "blue"
+
+inputs:
+  ref:
+    description: "Git ref to build and publish (for example the release tag v1.3.0)"
+    required: true
+  repository-url:
+    description: "Upload URL of the package index. Use https://test.pypi.org/legacy/ for TestPyPI"
+    required: false
+    default: "https://upload.pypi.org/legacy/"
+  build-command:
+    description: "Command that builds the distributions into packages-dir"
+    required: false
+    default: "uv build"
+  packages-dir:
+    description: "Directory that holds the built distributions"
+    required: false
+    default: "dist"
+  skip-existing:
+    description: "Skip files the index already has instead of failing. Useful when you publish the same version again to TestPyPI"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v6
+      with:
+        ref: ${{ inputs.ref }}
+
+    - uses: astral-sh/setup-uv@v5
+
+    - name: Build
+      shell: bash
+      run: ${{ inputs.build-command }}
+
+    - name: Publish
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: ${{ inputs.repository-url }}
+        packages-dir: ${{ inputs.packages-dir }}
+        skip-existing: ${{ inputs.skip-existing }}

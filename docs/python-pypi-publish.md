@@ -1,15 +1,19 @@
 # python-pypi-publish
 
-A reusable workflow that builds a ref and publishes it to a Python package index with trusted publishing (OIDC).
+A composite action that builds a ref and publishes it to a Python package index with trusted publishing (OIDC).
 
 It does not calculate versions, tag, or create a GitHub Release. Run it after [`github-tag-release`](github-tag-release.md) (release-please) has created the release.
 
+## Why an action and not a workflow
+
+PyPI trusted publishing does not accept a reusable workflow in another repository ("Reusable workflows cannot currently be used as the workflow in a Trusted Publisher"). The publish fails with `invalid-publisher`. A composite action runs inside the caller's job, so the token names the caller's own workflow file, and that is the file you register on PyPI.
+
 ## Usage
 
-Make a small workflow in the repository that starts when a GitHub Release is published:
+Make a workflow in the repository that starts when a GitHub Release is published:
 
 ```yaml
-name: Publish
+name: PyPI Release
 
 on:
   release:
@@ -22,22 +26,24 @@ on:
 
 jobs:
   publish:
+    runs-on: ubuntu-latest
+    environment: production
     permissions:
       contents: read
       id-token: write
-    uses: thekhoo/github-actions-shared/.github/workflows/python-pypi-publish.yml@main
-    with:
-      ref: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: thekhoo/github-actions-shared/.github/actions/python-pypi-publish@main
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
 ```
 
-The caller job must grant `id-token: write`. A reusable workflow cannot have more permissions than its caller.
+The job sets `environment` and the permission `id-token: write`.
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `ref` | Yes | - | Git ref to build and publish, for example the release tag `v1.3.0` |
-| `environment` | No | `production` | GitHub environment of the publish job. It must match the trusted publisher config on the index |
 | `repository-url` | No | `https://upload.pypi.org/legacy/` | Upload URL of the package index |
 | `build-command` | No | `uv build` | Command that builds the distributions into `packages-dir` |
 | `packages-dir` | No | `dist` | Directory that holds the built distributions |
@@ -50,15 +56,17 @@ Use a separate environment and the TestPyPI upload URL:
 ```yaml
 jobs:
   publish-test:
+    runs-on: ubuntu-latest
+    environment: testpypi
     permissions:
       contents: read
       id-token: write
-    uses: thekhoo/github-actions-shared/.github/workflows/python-pypi-publish.yml@main
-    with:
-      ref: ${{ github.event.release.tag_name }}
-      repository-url: https://test.pypi.org/legacy/
-      environment: testpypi
-      skip-existing: true
+    steps:
+      - uses: thekhoo/github-actions-shared/.github/actions/python-pypi-publish@main
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
 ```
 
 For another index, set `repository-url` to its upload URL and set up a trusted publisher on that index.
@@ -69,11 +77,11 @@ On the index (pypi.org or test.pypi.org), open the project → Publishing → ad
 
 | Field | Value |
 |-------|-------|
-| Owner and repository | The repository that holds the **caller** workflow |
-| Workflow name | The file name of the caller workflow, for example `publish.yml` (not `python-pypi-publish.yml`) |
-| Environment | The value of the `environment` input |
+| Owner and repository | The repository that holds the workflow |
+| Workflow name | The file name of the workflow that uses this action, for example `pypi-release.yml` |
+| Environment | The `environment` of the publish job |
 
-PyPI checks the caller's workflow file. If publishing fails with a trusted publisher error, check these three fields first.
+If publishing fails with `invalid-publisher`, compare these three fields with the claims in the log (`workflow_ref` and `environment`).
 
 ## What it does
 
