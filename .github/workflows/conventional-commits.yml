@@ -1,0 +1,33 @@
+# ============================================================================
+# Reusable workflow — Conventional Commits
+#
+# Fails when a commit on the pull request does not follow Conventional Commits
+# (feat:, fix:, docs:, ci:, ...). release-please reads these messages to pick
+# the next version.
+#
+# Usage:
+#
+#   on:
+#     pull_request:
+#       branches: [main]
+#
+#   jobs:
+#     commit-messages:
+#       uses: thekhoo/github-actions-shared/.github/workflows/conventional-commits.yml@main
+# ============================================================================
+name: Conventional Commits
+
+on:
+  workflow_call:
+
+jobs:
+  commit-messages:
+    name: Validate Commit Messages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: webiny/action-conventional-commits@v1.3.0
