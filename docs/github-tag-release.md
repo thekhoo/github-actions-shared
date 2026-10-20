@@ -60,6 +60,7 @@ To create the app, store the credentials in SSM, or rotate the key, see [release
 | `app-id` | Yes | - | ID of the release GitHub App |
 | `config-file` | No | `release-please-config.json` | Path to the release-please config file |
 | `manifest-file` | No | `.release-please-manifest.json` | Path to the release-please manifest file |
+| `auto-merge` | No | `false` | Turn on auto-merge for the release PR. Other PRs are not affected |
 
 ## Secrets
 
@@ -74,10 +75,24 @@ To create the app, store the credentials in SSM, or rotate the key, see [release
 | `release-created` | `'true'` if this run created a release |
 | `tag-name` | Tag of the release, for example `v1.3.0`. Empty when no release was created |
 
+## Auto-merge the release PR
+
+Set `auto-merge: true` to merge the release PR without a manual step. The workflow runs `gh pr merge --auto --squash` on the release PR that release-please creates or updates, using the App token. It does not touch any other PR.
+
+Auto-merge is not a bypass. GitHub merges the PR only when every ruleset requirement is met: the required checks and any review rule. For a repository where you are the only author, either:
+
+- remove the review requirement, or
+- test whether the App's ruleset bypass lets the release PR merge. Check this on the first release PR.
+
+Each merged release PR starts a release and the publish workflow, so every `feat` or `fix` that reaches the default branch is then released without a manual check.
+
+Requirements: turn on **Allow auto-merge** in the repository settings (Settings → General → Pull Requests).
+
 ## What it does
 
 1. Creates a token for the release GitHub App with `actions/create-github-app-token`.
 2. Runs `googleapis/release-please-action` with that token.
+3. If `auto-merge` is true and release-please created or updated a release PR, turns on auto-merge for that PR.
 
 The App token is needed for two reasons. Pull requests and releases that `GITHUB_TOKEN` creates do not start other workflows. The App can also be on the ruleset bypass list.
 
