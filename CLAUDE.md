@@ -25,8 +25,8 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 - `python-pytest` — pytest runner (uses python-setup-uv)
 
 **Release:**
-- `python-semantic-release` — version bump, commit, tag (no GitHub Release)
-- `github-publish-release` — creates GitHub Release for a tag (run after PyPI publish)
+- `python-semantic-release` — **deprecated**, use `github-tag-release`. Version bump, commit, tag (no GitHub Release)
+- `github-publish-release` — **deprecated**, use `github-tag-release`. Creates GitHub Release for a tag (run after PyPI publish)
 
 **Reusable Workflows:**
 - `python-ci` — linting + pytest matrix (workflow)
