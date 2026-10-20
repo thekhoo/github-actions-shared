@@ -1,5 +1,7 @@
 # github-publish-release
 
+> **Deprecated.** Use the [`github-tag-release`](github-tag-release.md) workflow (release-please) instead. This action stays available for repositories that still call it, and it prints a deprecation warning in the workflow log.
+
 Creates a GitHub Release with build artifacts for a given tag. Designed to be used after [`python-semantic-release`](python-semantic-release.md) and a successful PyPI publish.
 
 ## Usage
