@@ -61,6 +61,9 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 **Orchestration:**
 - `deploy-infrastructure-and-docker` — orchestrates deployment role, infrastructure, and docker retag (uses aws-cloudformation-deploy + docker-retag)
 
+**Onboarding guides:**
+- `docs/pypi-onboard-repo.md` — end-to-end procedure to make a Python repository publish to PyPI with release-please and the shared workflows
+
 **Release app (GitHub App, not an action):**
 - `thekhoo-actions-writer-agent` — GitHub App that lets workflows write to protected repositories. Credentials are in SSM and are managed with `scripts/release-app-credentials.sh`. Setup: `docs/release-app-setup.md`. Onboarding a repository: `docs/release-app-onboard-repo.md`
 
