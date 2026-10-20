@@ -27,6 +27,7 @@
 #
 # For TestPyPI, set `environment: testpypi` on the job and add:
 #             repository-url: https://test.pypi.org/legacy/
+#             check-url: https://test.pypi.org/simple/
 # ============================================================================
 name: "Python PyPI Publish"
 description: >
@@ -52,10 +53,10 @@ inputs:
     description: "Directory that holds the built distributions"
     required: false
     default: "dist"
-  skip-existing:
-    description: "Skip files the index already has instead of failing. Useful when you publish the same version again to TestPyPI"
+  check-url:
+    description: "Index URL to check for files that already exist, so they are skipped instead of failing (for example https://test.pypi.org/simple/ for TestPyPI). Empty means no check"
     required: false
-    default: "false"
+    default: ""
 
 runs:
   using: "composite"
@@ -70,9 +71,17 @@ runs:
       shell: bash
       run: ${{ inputs.build-command }}
 
+    # uv publish, not pypa/gh-action-pypi-publish: that action cannot run nested inside another
+    # action (it resolves its container image from the outermost action's repository).
     - name: Publish
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        repository-url: ${{ inputs.repository-url }}
-        packages-dir: ${{ inputs.packages-dir }}
-        skip-existing: ${{ inputs.skip-existing }}
+      shell: bash
+      env:
+        PUBLISH_URL: ${{ inputs.repository-url }}
+        CHECK_URL: ${{ inputs.check-url }}
+        PACKAGES_DIR: ${{ inputs.packages-dir }}
+      run: |
+        args=(--trusted-publishing always --publish-url "$PUBLISH_URL")
+        if [[ -n "$CHECK_URL" ]]; then
+          args+=(--check-url "$CHECK_URL")
+        fi
+        uv publish "${args[@]}" "$PACKAGES_DIR"/*
