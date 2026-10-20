@@ -1,5 +1,7 @@
 # python-pypi-deploy
 
+> **Deprecated.** Use the [`github-tag-release`](github-tag-release.md) workflow (release-please) to tag releases and [`python-pypi-publish`](python-pypi-publish.md) to publish them. This workflow stays available for repositories that still call it, and it prints a deprecation warning in the workflow log.
+
 Reusable workflow that handles the full release-to-PyPI pipeline: semantic versioning, GitHub Release creation, artifact upload, and PyPI publishing via trusted publishing (OIDC).
 
 ## Usage
