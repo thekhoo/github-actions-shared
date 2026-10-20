@@ -30,6 +30,7 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 
 **Reusable Workflows:**
 - `github-tag-release` — release-please with the release GitHub App token; tags the release and creates the GitHub Release (workflow). Start publishing from `release: published`
+- `conventional-commits` — fails a pull request whose commits do not follow Conventional Commits (workflow)
 - `python-ci` — linting + pytest matrix (workflow)
 - `python-pypi-deploy` — **deprecated**, use `github-tag-release` + `python-pypi-publish`. Semantic release → GitHub Release → PyPI publish (workflow)
 - `python-pypi-publish` — builds a ref (release tag) and publishes it to PyPI or another index with trusted publishing; `repository-url` and `environment` are inputs (workflow). Run after `github-tag-release`
