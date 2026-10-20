@@ -1,0 +1,87 @@
+# ============================================================================
+# Reusable workflow — Python PyPI Publish
+#
+# Builds a ref (usually a release tag) and publishes it to a Python package
+# index with trusted publishing (OIDC). It does not calculate versions or tag
+# anything. Use it after github-tag-release (release-please) has created the
+# release.
+#
+# Usage (in a workflow that runs on `release: published`):
+#
+#   jobs:
+#     publish:
+#       permissions:
+#         contents: read
+#         id-token: write
+#       uses: thekhoo/github-actions-shared/.github/workflows/python-pypi-publish.yml@main
+#       with:
+#         ref: ${{ github.event.release.tag_name }}
+#
+# For TestPyPI, add:
+#         repository-url: https://test.pypi.org/legacy/
+#         environment: testpypi
+# ============================================================================
+name: Python PyPI Publish
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build and publish (for example the release tag v1.3.0)
+        type: string
+        required: true
+
+      environment:
+        description: GitHub environment for the publish job (must match the trusted publisher config on the index)
+        type: string
+        required: false
+        default: production
+
+      repository-url:
+        description: Upload URL of the package index. Use https://test.pypi.org/legacy/ for TestPyPI
+        type: string
+        required: false
+        default: https://upload.pypi.org/legacy/
+
+      build-command:
+        description: Command that builds the distributions into packages-dir
+        type: string
+        required: false
+        default: uv build
+
+      packages-dir:
+        description: Directory that holds the built distributions
+        type: string
+        required: false
+        default: dist
+
+      skip-existing:
+        description: Skip files the index already has instead of failing. Useful when you publish the same version again to TestPyPI
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  publish:
+    name: Publish to ${{ inputs.repository-url }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build
+        run: ${{ inputs.build-command }}
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: ${{ inputs.repository-url }}
+          packages-dir: ${{ inputs.packages-dir }}
+          skip-existing: ${{ inputs.skip-existing }}
