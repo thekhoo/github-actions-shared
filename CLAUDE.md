@@ -25,12 +25,14 @@ Each action lives in `.github/actions/<action-name>/action.yml` and follows a co
 - `python-pytest` — pytest runner (uses python-setup-uv)
 
 **Release:**
-- `python-semantic-release` — version bump, commit, tag (no GitHub Release)
-- `github-publish-release` — creates GitHub Release for a tag (run after PyPI publish)
+- `python-semantic-release` — **deprecated**, use `github-tag-release`. Version bump, commit, tag (no GitHub Release)
+- `github-publish-release` — **deprecated**, use `github-tag-release`. Creates GitHub Release for a tag (run after PyPI publish)
 
 **Reusable Workflows:**
+- `github-tag-release` — release-please with the release GitHub App token; tags the release and creates the GitHub Release (workflow). Start publishing from `release: published`
 - `python-ci` — linting + pytest matrix (workflow)
-- `python-pypi-deploy` — semantic release → GitHub Release → PyPI publish (workflow)
+- `python-pypi-deploy` — **deprecated**, use `github-tag-release` + `python-pypi-publish`. Semantic release → GitHub Release → PyPI publish (workflow)
+- `python-pypi-publish` — builds a ref (release tag) and publishes it to PyPI or another index with trusted publishing; `repository-url` and `environment` are inputs (workflow). Run after `github-tag-release`
 
 **AWS CloudFormation:**
 - `aws-cloudformation-validate` — cfn-lint + AWS API validation with OIDC role chaining
@@ -70,7 +72,9 @@ python-pytest ───┘
 
 python-semantic-release → (PyPI publish) → github-publish-release
 
-python-pypi-deploy (workflow) → python-semantic-release
+python-pypi-publish (workflow) → pypa/gh-action-pypi-publish
+
+python-pypi-deploy (workflow, deprecated) → python-semantic-release
                                → github-publish-release (via publish-action)
                                → pypa/gh-action-pypi-publish
 

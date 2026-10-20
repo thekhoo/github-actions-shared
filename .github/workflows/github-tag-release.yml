@@ -1,0 +1,74 @@
+# ============================================================================
+# Reusable workflow — GitHub Tag Release
+#
+# Runs release-please with a GitHub App token. release-please keeps a release
+# PR up to date. When that PR is merged it tags the release and creates the
+# GitHub Release. Start the publish step from the `release: published` event.
+#
+# Usage:
+#
+#   jobs:
+#     tag-release:
+#       uses: thekhoo/github-actions-shared/.github/workflows/github-tag-release.yml@main
+#       with:
+#         app-id: ${{ vars.RELEASE_APP_ID }}
+#       secrets:
+#         private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+# ============================================================================
+name: GitHub Tag Release
+
+on:
+  workflow_call:
+    inputs:
+      app-id:
+        description: ID of the release GitHub App
+        type: string
+        required: true
+
+      config-file:
+        description: Path to the release-please config file
+        type: string
+        required: false
+        default: release-please-config.json
+
+      manifest-file:
+        description: Path to the release-please manifest file
+        type: string
+        required: false
+        default: .release-please-manifest.json
+
+    secrets:
+      private-key:
+        description: Private key of the release GitHub App
+        required: true
+
+    outputs:
+      release-created:
+        description: "'true' if this run created a release"
+        value: ${{ jobs.tag-release.outputs.release-created }}
+      tag-name:
+        description: The tag of the release (for example v1.3.0). Empty when no release was created
+        value: ${{ jobs.tag-release.outputs.tag-name }}
+
+jobs:
+  tag-release:
+    name: Tag Release
+    runs-on: ubuntu-latest
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      tag-name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # The app token, not GITHUB_TOKEN, lets the release PR trigger CI and lets the
+      # GitHub Release trigger other workflows.
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.private-key }}
+
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}

@@ -1,5 +1,7 @@
 # python-semantic-release
 
+> **Deprecated.** Use the [`github-tag-release`](github-tag-release.md) workflow (release-please) instead. This action stays available for repositories that still call it, and it prints a deprecation warning in the workflow log.
+
 Analyses conventional commits, bumps the version in `pyproject.toml`, and creates a git tag. Does **not** create a GitHub Release or publish to PyPI — use [`github-publish-release`](github-publish-release.md) for the release step.
 
 ## Usage

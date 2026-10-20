@@ -1,4 +1,6 @@
 # ============================================================================
+# DEPRECATED: use the github-tag-release workflow (release-please) instead.
+#
 # Composite action — GitHub Publish Release
 #
 # Creates a GitHub Release with build artifacts for a given tag.
@@ -22,6 +24,7 @@
 # ============================================================================
 name: "GitHub Publish Release"
 description: >
+  DEPRECATED: use the github-tag-release workflow instead.
   Create a GitHub Release with build artifacts for a given tag.
 
 branding:
@@ -39,6 +42,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Warn that this action is deprecated
+      shell: bash
+      run: echo "::warning title=Deprecated::github-publish-release is deprecated. Use the github-tag-release workflow (release-please) instead."
+
     - name: Publish to GitHub Release
       uses: python-semantic-release/publish-action@v10.5.3
       with:
