@@ -12,6 +12,7 @@
 #       uses: thekhoo/github-actions-shared/.github/workflows/github-tag-release.yml@main
 #       with:
 #         app-id: ${{ vars.RELEASE_APP_ID }}
+#         auto-merge: true   # optional: merge the release PR once its checks pass
 #       secrets:
 #         private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 # ============================================================================
@@ -36,6 +37,12 @@ on:
         type: string
         required: false
         default: .release-please-manifest.json
+
+      auto-merge:
+        description: Turn on auto-merge for the release PR. Only the release PR is affected, not other PRs
+        type: boolean
+        required: false
+        default: false
 
     secrets:
       private-key:
@@ -72,3 +79,15 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           config-file: ${{ inputs.config-file }}
           manifest-file: ${{ inputs.manifest-file }}
+
+      # Auto-merge waits for the ruleset requirements (checks, reviews) before it merges.
+      - name: Enable auto-merge on the release PR
+        if: ${{ inputs.auto-merge && steps.release.outputs.pr != '' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_JSON: ${{ steps.release.outputs.pr }}
+          REPO: ${{ github.repository }}
+        run: |
+          number=$(jq -r .number <<<"$PR_JSON")
+          echo "Enabling auto-merge on release PR #$number"
+          gh pr merge "$number" --auto --squash --repo "$REPO"
