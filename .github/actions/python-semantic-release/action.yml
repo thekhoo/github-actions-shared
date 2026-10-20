@@ -1,4 +1,6 @@
 # ============================================================================
+# DEPRECATED: use the github-tag-release workflow (release-please) instead.
+#
 # Composite action — Python Semantic Release
 #
 # Handles: version bump, commit, tag.
@@ -26,6 +28,7 @@
 # ============================================================================
 name: "Python Semantic Release"
 description: >
+  DEPRECATED: use the github-tag-release workflow instead.
   Analyse conventional commits, bump version in pyproject.toml,
   and create a git tag.
 
@@ -64,6 +67,10 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Warn that this action is deprecated
+      shell: bash
+      run: echo "::warning title=Deprecated::python-semantic-release is deprecated. Use the github-tag-release workflow (release-please) instead."
+
     - name: Ensure full git history
       shell: bash
       run: |
