@@ -34,6 +34,25 @@ on:
     types: [published]
 ```
 
+## Set the required keys
+
+The workflow needs the App ID (`app-id`) and the App private key (`private-key`) of the release GitHub App, `thekhoo-actions-writer-agent`. Set both on each repository that calls the workflow.
+
+1. Install the app on the repository: GitHub → Settings → Developer settings → GitHub Apps → `thekhoo-actions-writer-agent` → **Install App**. Choose **Only select repositories** and add the repository.
+2. Set the variable `RELEASE_APP_ID` and the secret `RELEASE_APP_PRIVATE_KEY`. The values are in SSM in eu-west-2:
+
+   | Value | SSM parameter | Set on the repository as |
+   |-------|---------------|--------------------------|
+   | App ID | `/shared/github-actions-shared/exported/github/release-app/app-id` | variable `RELEASE_APP_ID` |
+   | Private key | `/shared/github-actions-shared/exported/github/release-app/private-key` | secret `RELEASE_APP_PRIVATE_KEY` |
+
+   Run `scripts/onboard-repo.sh` from this repository. It prompts for the repository name, reads both values from SSM, and sets them. Use AWS credentials that can read the parameters and a `gh` login that can administer the repository.
+
+   Or set them by hand under the repository Settings → Secrets and variables → Actions. The App ID is on the app page. Generate the private key there too, as a `.pem` file. GitHub shows it once.
+3. If the workflow must push to a protected branch, add the app to the ruleset bypass list: repository Settings → Rules → Rulesets → Bypass list. The workflow only opens pull requests and tags releases, so it does not need the bypass in most cases. The release PR itself still needs the normal review and checks.
+
+To create the app, store the credentials in SSM, or rotate the key, see [release-app-setup.md](release-app-setup.md). For the full onboarding steps, see [release-app-onboard-repo.md](release-app-onboard-repo.md).
+
 ## Inputs
 
 | Input | Required | Default | Description |
@@ -65,5 +84,5 @@ The App token is needed for two reasons. Pull requests and releases that `GITHUB
 ## Requirements
 
 - The repository has a `release-please-config.json` and a `.release-please-manifest.json`. Set the manifest to the latest released version.
-- The release GitHub App is installed on the repository. The secret and the variable are set. See [release-app-onboard-repo.md](release-app-onboard-repo.md).
+- The release GitHub App is installed on the repository, and the secret and the variable are set. See [Set the required keys](#set-the-required-keys).
 - Use conventional commits (`feat:`, `fix:`, ...) on the default branch.
